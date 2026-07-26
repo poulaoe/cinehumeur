@@ -352,6 +352,151 @@
   .detail-actions button{flex:1 1 140px}
 }
 
+
+/* CinéHumeur V2 — expérience mobile */
+@media(max-width:720px){
+  body{overflow-x:hidden}
+  .app{padding:10px 10px 72px}
+  header{
+    gap:8px;
+    margin-bottom:12px;
+    align-items:flex-start;
+  }
+  .brand{gap:8px}
+  .logo{width:40px;height:40px;border-radius:13px;font-size:21px}
+  h1{font-size:1.2rem}
+  .brand .muted{display:none}
+  .account-area{gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  #resetBtn{font-size:.72rem;padding:8px 5px}
+  #accountBtn{font-size:.78rem;padding:9px 10px}
+  .account-chip{padding:5px 7px}
+  .account-chip>div:nth-child(2){display:none}
+
+  .panel,.hero{padding:16px;border-radius:20px}
+  .panel h2{font-size:2rem;margin-bottom:8px}
+  .stats{gap:8px;margin:13px 0}
+  .stat{padding:12px;border-radius:14px}
+  .stat strong{font-size:1.2rem}
+  .stat span{font-size:.72rem}
+
+  .ai-studio,.preference-shell{padding:15px;margin:14px 0;border-radius:18px}
+  .ai-input{min-height:88px;padding:14px}
+  .quick-prompts{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    padding-bottom:5px;
+    scrollbar-width:none;
+  }
+  .quick-prompts::-webkit-scrollbar{display:none}
+  .quick-prompt{flex:0 0 auto;scroll-snap-align:start}
+
+  .choice-grid{
+    display:flex;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    gap:9px;
+    padding:2px 2px 8px;
+    scrollbar-width:none;
+  }
+  .choice-grid::-webkit-scrollbar{display:none}
+  .choice-btn{
+    flex:0 0 76%;
+    min-height:78px;
+    scroll-snap-align:center;
+    font-size:1rem;
+  }
+  .genre-cloud{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    padding-bottom:7px;
+    scrollbar-width:none;
+  }
+  .genre-cloud::-webkit-scrollbar{display:none}
+  .genre-chip{flex:0 0 auto;padding:10px 13px}
+
+  .modes{
+    gap:8px;
+    scroll-snap-type:x mandatory;
+    scrollbar-width:none;
+  }
+  .modes::-webkit-scrollbar{display:none}
+  .mode-btn{
+    flex:0 0 auto;
+    scroll-snap-align:start;
+    padding:12px 14px;
+  }
+  .mood-summary{font-size:.88rem;padding:11px 13px}
+
+  /* Une recommandation principale par écran, glissable au doigt */
+  .recommend-grid{
+    display:flex;
+    overflow-x:auto;
+    gap:12px;
+    margin-left:-6px;
+    margin-right:-6px;
+    padding:4px 6px 16px;
+    scroll-snap-type:x mandatory;
+    scroll-padding:6px;
+    scrollbar-width:none;
+  }
+  .recommend-grid::-webkit-scrollbar{display:none}
+  .rec-card{
+    flex:0 0 calc(100vw - 34px);
+    max-width:430px;
+    scroll-snap-align:center;
+    border-radius:20px;
+  }
+  .rec-card .poster{aspect-ratio:16/11}
+  .rec-body{padding:15px}
+  .rec-body h3{font-size:1.35rem}
+  .reason{min-height:0;font-size:.93rem}
+  .rec-actions{
+    gap:8px!important;
+    grid-template-columns:1fr 1fr!important;
+  }
+  .rec-actions button{
+    min-height:48px;
+    padding:10px 7px;
+    font-size:.82rem;
+  }
+  .detail-btn{min-height:48px;font-weight:850}
+
+  #refreshBtn{width:100%;min-height:50px}
+  .bottom-bar{bottom:6px}
+  .movie-grid{grid-template-columns:1fr 1fr}
+  .movie-title{font-size:.92rem}
+  .movie-meta{font-size:.72rem}
+
+  .detail-dialog{
+    width:100%;
+    max-height:100dvh;
+    height:100dvh;
+    border-radius:0;
+    border:0;
+  }
+  .detail-hero{border-radius:0;min-height:44vh}
+  .detail-close{
+    position:fixed;
+    top:max(10px,env(safe-area-inset-top));
+    right:10px;
+    background:rgba(8,9,15,.82);
+    border:1px solid rgba(255,255,255,.15);
+    z-index:20;
+  }
+  .trailer-wrap{border-radius:13px}
+}
+
+/* Indication discrète de glissement sur mobile */
+.mobile-swipe-hint{
+  display:none;
+  color:var(--muted);
+  font-size:.78rem;
+  text-align:center;
+  margin:-5px 0 7px;
+}
+@media(max-width:720px){.mobile-swipe-hint{display:block}}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -496,7 +641,7 @@
           <button class="mode-btn" data-mode="surprise">🎲 Surprise</button>
         </div>
 
-        <div class="mood-summary" id="moodSummary">Sélection calculée selon ton profil.</div><div class="recommend-grid" id="recommendGrid"></div>
+        <div class="mood-summary" id="moodSummary">Sélection calculée selon ton profil.</div><div class="mobile-swipe-hint">← Fais glisser pour voir les 3 propositions →</div><div class="recommend-grid" id="recommendGrid"></div>
         <div class="row" style="margin-top:18px">
           <button class="primary" id="refreshBtn">Proposer 3 autres films</button>
         </div>
@@ -594,7 +739,9 @@ const defaultState={
   mood:"",
   selectedGenres:[],
   aiPrompt:"",
-  aiBrief:null
+  aiBrief:null,
+  recommendationOrigins:{},
+  expandedTasteIds:[]
 };
 let state={...defaultState};
 let visibleMovies=[];
@@ -612,7 +759,7 @@ let authMode="login";
 const LOCAL_KEY="cinehumeur-v3";
 
 function normalizeState(data){
-  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[]};
+  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[],recommendationOrigins:data?.recommendationOrigins||{},expandedTasteIds:data?.expandedTasteIds||[]};
 }
 function save(){
   localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
@@ -968,178 +1115,51 @@ function profile(){
   }
   return scores;
 }
-
-function getRatedMovie(id){
-  return state.catalog.find(x=>String(x.id)===String(id))
-    || fallbackMovies.find(x=>String(x.id)===String(id))
-    || null;
-}
-
-function movieSimilarity(a,b){
-  if(!a||!b)return 0;
-
-  const genresA=new Set(a.genre_ids||[]);
-  const genresB=new Set(b.genre_ids||[]);
-
-  let commonGenres=0;
-  genresA.forEach(id=>{
-    if(genresB.has(id))commonGenres++;
-  });
-
-  const unionSize=new Set([...genresA,...genresB]).size||1;
-  let score=(commonGenres/unionSize)*32;
-
-  if(a.original_language&&b.original_language&&a.original_language===b.original_language){
-    score+=5;
-  }
-
-  const yearA=Number(yearOf(a));
-  const yearB=Number(yearOf(b));
-
-  if(Number.isFinite(yearA)&&Number.isFinite(yearB)){
-    const difference=Math.abs(yearA-yearB);
-    if(difference<=3)score+=6;
-    else if(difference<=8)score+=4;
-    else if(difference<=15)score+=2;
-  }
-
-  const ratingDifference=Math.abs(Number(a.vote_average||0)-Number(b.vote_average||0));
-  if(ratingDifference<=0.5)score+=3;
-  else if(ratingDifference<=1)score+=1.5;
-
-  return score;
-}
-
-function ratedGroups(){
-  const groups={loved:[],liked:[],neutral:[],disliked:[]};
-
-  for(const [id,rating] of Object.entries(state.ratings)){
-    const movie=getRatedMovie(id);
-    if(!movie||rating==="unknown")continue;
-
-    if(rating==="love")groups.loved.push(movie);
-    else if(rating==="like")groups.liked.push(movie);
-    else if(rating==="neutral")groups.neutral.push(movie);
-    else if(rating==="dislike")groups.disliked.push(movie);
-  }
-
-  return groups;
-}
-
 function candidateScore(m,mode){
-  const id=String(m.id);
-  if(state.ratings[id])return -10000;
-
-  const groups=ratedGroups();
   const p=profile();
   let score=0;
-
-  const lovedSimilarities=groups.loved
-    .map(movie=>movieSimilarity(m,movie))
-    .sort((a,b)=>b-a);
-
-  const likedSimilarities=groups.liked
-    .map(movie=>movieSimilarity(m,movie))
-    .sort((a,b)=>b-a);
-
-  const dislikedSimilarities=groups.disliked
-    .map(movie=>movieSimilarity(m,movie))
-    .sort((a,b)=>b-a);
-
-  score+=(lovedSimilarities[0]||0)*2.4;
-  score+=(lovedSimilarities[1]||0)*1.25;
-  score+=(lovedSimilarities[2]||0)*0.65;
-
-  score+=(likedSimilarities[0]||0)*1.25;
-  score+=(likedSimilarities[1]||0)*0.65;
-
-  score-=(dislikedSimilarities[0]||0)*2;
-  score-=(dislikedSimilarities[1]||0)*0.75;
-
-  (m.genre_ids||[]).forEach(genre=>{
-    score+=(p.genres[genre]||0)*1.4;
-  });
-
-  score+=(p.languages[m.original_language]||0)*0.7;
-
-  const year=Number(yearOf(m));
-  const era=Number.isFinite(year)
-    ? year<1985 ? "old" : year<2010 ? "mid" : "new"
-    : "new";
-
-  score+=(p.years[era]||0)*0.2;
-
-  const selectedGenres=new Set(state.selectedGenres||[]);
-  (m.genre_ids||[]).forEach(genre=>{
-    if(selectedGenres.has(genre))score+=10;
-  });
-
+  (m.genre_ids||[]).forEach(g=>score+=(p.genres[g]||0)*2);
+  score+=(p.languages[m.original_language]||0);
+  const y=yearOf(m);
+  const era=typeof y==="number"?(y<1985?"old":y<2010?"mid":"new"):"new";
+  score+=(p.years[era]||0)*.25;
+  score+=Math.min(m.vote_average||0,9)*1.2;
+  score+=Math.log10((m.popularity||0)+1)*2;
+  const selected=new Set(state.selectedGenres||[]);
+  (m.genre_ids||[]).forEach(g=>{if(selected.has(g))score+=8});
   const moodGenres={
-    comfort:[35,10751,10749,16],
-    fun:[35,16,12],
-    intense:[53,28,80],
-    emotion:[18,10749],
-    escape:[12,14,878,16],
-    dark:[53,80,27,9648],
-    smart:[9648,878,18,36],
-    surprise:[]
+    comfort:[35,10751,10749,16],fun:[35,16,12],intense:[53,28,80],emotion:[18,10749],
+    escape:[12,14,878,16],dark:[53,80,27,9648],smart:[9648,878,18,36],surprise:[]
   };
-
-  (moodGenres[state.mood]||[]).forEach(genre=>{
-    if((m.genre_ids||[]).includes(genre))score+=8;
-  });
-
-  const voteAverage=Number(m.vote_average||0);
-  const voteCount=Number(m.vote_count||0);
-  const popularity=Number(m.popularity||0);
-
-  score+=Math.max(0,voteAverage-5.5)*4;
-
-  if(voteCount>=10000)score+=5;
-  else if(voteCount>=3000)score+=4;
-  else if(voteCount>=500)score+=2;
-  else if(voteCount<50)score-=3;
-
-  score+=Math.min(Math.log10(popularity+1)*1.2,3);
-
+  (moodGenres[state.mood]||[]).forEach(g=>{if((m.genre_ids||[]).includes(g))score+=7});
+  if(state.mood==="comfort"&&m.vote_average>=7)score+=3;
+  if(state.mood==="surprise")score+=Math.random()*18;
   if(mode==="gems"){
-    score+=voteAverage*2.4;
-    score-=Math.log10(popularity+1)*5;
-    if(voteCount>=100&&voteCount<=5000)score+=8;
+    score+=(m.vote_average||0)*2;
+    score-=Math.log10((m.popularity||0)+1)*4;
+    if((m.vote_count||0)>100)score+=2;
   }
-
   if(mode==="world"){
-    if(m.original_language&&m.original_language!=="en"&&m.original_language!=="fr")score+=14;
-    else score-=4;
+    score+=m.original_language&&m.original_language!=="en"&&m.original_language!=="fr"?10:-2;
   }
-
   if(mode==="classic"){
-    if(Number.isFinite(year)&&year<2000)score+=15;
-    else score-=5;
+    score+=typeof y==="number"&&y<2000?12:-3;
   }
-
   if(mode==="surprise"){
-    score+=Math.random()*18;
-    score-=(lovedSimilarities[0]||0)*0.25;
+    score=Math.random()*25+(m.vote_average||0);
   }
-
   const brief=state.aiBrief||{};
-  const preferredGenres=new Set(brief.preferred_genres||[]);
-  const avoidedGenres=new Set(brief.avoid_genres||[]);
-
-  (m.genre_ids||[]).forEach(genre=>{
-    if(preferredGenres.has(genre))score+=11;
-    if(avoidedGenres.has(genre))score-=22;
-  });
-
-  if(brief.min_rating&&voteAverage<Number(brief.min_rating))score-=18;
-  if(brief.prefer_less_popular)score-=Math.log10(popularity+1)*3;
-  if((state.recent||[]).includes(id))score-=500;
-
+  const preferred=new Set(brief.preferred_genres||[]);
+  const avoided=new Set(brief.avoid_genres||[]);
+  (m.genre_ids||[]).forEach(g=>{if(preferred.has(g))score+=9;if(avoided.has(g))score-=14});
+  if(brief.min_rating&&m.vote_average<brief.min_rating)score-=8;
+  if(brief.prefer_less_popular)score-=Math.log10((m.popularity||0)+1)*2.5;
+  if(state.recent.includes(String(m.id)))score-=100;
+  if(state.ratings[m.id])score-=200;
   return score;
 }
-
 function reasonFor(m){
+  const origin=bestRecommendationOrigin(m);
   const groups=ratedGroups();
 
   const lovedMatches=groups.loved
@@ -1153,48 +1173,120 @@ function reasonFor(m){
   const bestMatch=lovedMatches[0]||likedMatches[0];
   const genreText=genreNames(m).slice(0,2).join(" et ").toLowerCase();
 
-  if(state.mode==="gems"){
-    return bestMatch
-      ? `Une pépite moins évidente, proche de ${bestMatch.movie.title}, mais volontairement moins populaire.`
-      : "Une pépite moins connue sélectionnée pour sa qualité.";
+  if(origin){
+    const verb=origin.rating==="love"?"adoré":"aimé";
+    if(state.mode==="gems"){
+      return `Une proposition moins connue issue des films recommandés aux personnes ayant ${verb} ${origin.title}.`;
+    }
+    return `TMDB le rapproche de ${origin.title}, que tu as ${verb}, puis CinéHumeur l’a retenu selon ton humeur et tes autres avis.`;
   }
 
-  if(state.mode==="world"){
-    return bestMatch
-      ? `Un film international qui conserve des points communs avec ${bestMatch.movie.title}.`
-      : "Une proposition internationale choisie pour élargir tes découvertes.";
-  }
-
-  if(state.mode==="classic"){
-    return bestMatch
-      ? `Un classique qui partage plusieurs caractéristiques avec ${bestMatch.movie.title}.`
-      : "Un classique adapté aux genres que tu apprécies.";
-  }
-
-  if(state.mode==="surprise"){
-    return genreText
-      ? `Une proposition plus inattendue, tout en conservant une affinité avec ${genreText}.`
-      : "Une proposition différente de tes habitudes, sans ignorer complètement ton profil.";
-  }
-
+  if(state.mode==="gems")return "Une proposition moins populaire, retenue pour sa qualité et sa proximité avec ton profil.";
+  if(state.mode==="world")return "Une proposition internationale compatible avec les thèmes et genres que tu apprécies.";
+  if(state.mode==="classic")return "Un classique qui rejoint plusieurs éléments présents dans tes films préférés.";
+  if(state.mode==="surprise")return "Une proposition plus inattendue, mais encore reliée à une partie de tes goûts.";
   if(state.aiBrief?.explanation)return state.aiBrief.explanation;
 
-  if(bestMatch&&bestMatch.score>=14){
-    return `Recommandé surtout parce que tu as apprécié ${bestMatch.movie.title}, avec une proximité de genres, d’époque ou d’ambiance.`;
+  if(bestMatch&&bestMatch.score>=20){
+    return `Proche de ${bestMatch.movie.title} par ses genres, son époque et son niveau d’appréciation, tout en tenant compte de tes autres notes.`;
   }
 
   if(genreText){
-    return `Correspond à tes préférences pour ${genreText}, tout en évitant les films proches de ceux que tu n’as pas aimés.`;
+    return `Retenu pour ton affinité avec ${genreText}, avec une pénalité appliquée aux films proches de ceux que tu n’as pas aimés.`;
   }
 
-  return "Sélectionné à partir de l’ensemble de tes évaluations et de ton envie actuelle.";
+  return "Choisi à partir de l’ensemble de tes évaluations et de ton envie actuelle.";
 }
-
 function recRole(index){return ["🎯 Le choix sûr","💎 La pépite","🚀 La découverte"][index]||"✨ Pour toi"}
 function moodLabel(){
   const labels={comfort:"Réconfortant",fun:"Léger et drôle",intense:"Intense",emotion:"Émouvant",escape:"Évasion",dark:"Sombre",smart:"Stimulant",surprise:"Surprends-moi"};
   return labels[state.mood]||"Selon tes goûts";
 }
+
+function strongestRatedMovies(limit=4){
+  const weight={love:4,like:2,neutral:0,dislike:-3,unknown:0};
+
+  return Object.entries(state.ratings)
+    .map(([id,rating])=>({
+      movie:getRatedMovie(id),
+      rating,
+      weight:weight[rating]||0
+    }))
+    .filter(item=>item.movie&&item.weight>0)
+    .sort((a,b)=>{
+      if(b.weight!==a.weight)return b.weight-a.weight;
+      return Number(b.movie.vote_average||0)-Number(a.movie.vote_average||0);
+    })
+    .slice(0,limit);
+}
+
+async function enrichPoolFromTaste(){
+  const seeds=strongestRatedMovies(5);
+  if(!seeds.length)return;
+
+  const alreadyExpanded=new Set(state.expandedTasteIds||[]);
+  const origins={...(state.recommendationOrigins||{})};
+  let added=[];
+
+  for(const seed of seeds){
+    const seedId=String(seed.movie.id);
+    if(alreadyExpanded.has(seedId))continue;
+
+    try{
+      const res=await fetch(`/api/movie?id=${encodeURIComponent(seedId)}`);
+      if(!res.ok)continue;
+
+      const detail=await res.json();
+      const neighbors=(detail.recommendations?.results||[])
+        .filter(movie=>movie.id&&movie.poster_path)
+        .slice(0,20)
+        .map(normalizedMovie);
+
+      neighbors.forEach(movie=>{
+        const id=String(movie.id);
+        const previous=origins[id]||[];
+        if(!previous.some(origin=>String(origin.id)===seedId)){
+          previous.push({
+            id:seed.movie.id,
+            title:seed.movie.title,
+            rating:seed.rating
+          });
+        }
+        origins[id]=previous.slice(0,4);
+      });
+
+      added.push(...neighbors);
+      alreadyExpanded.add(seedId);
+    }catch(error){
+      console.warn("Impossible d’enrichir les recommandations depuis",seed.movie.title,error);
+    }
+  }
+
+  if(added.length)addCatalog(added);
+  state.recommendationOrigins=origins;
+  state.expandedTasteIds=[...alreadyExpanded].slice(-20);
+  save();
+}
+
+function originBonus(movie){
+  const origins=state.recommendationOrigins?.[String(movie.id)]||[];
+  return origins.reduce((total,origin)=>{
+    if(origin.rating==="love")return total+38;
+    if(origin.rating==="like")return total+20;
+    return total;
+  },0);
+}
+
+function bestRecommendationOrigin(movie){
+  const origins=state.recommendationOrigins?.[String(movie.id)]||[];
+  return origins
+    .slice()
+    .sort((a,b)=>{
+      const w={love:2,like:1};
+      return (w[b.rating]||0)-(w[a.rating]||0);
+    })[0]||null;
+}
+
 async function ensureRecommendationPool(){
   if(state.catalog.length>=120)return;
   for(let i=0;i<4;i++){
@@ -1214,11 +1306,24 @@ async function ensureRecommendationPool(){
 async function recommend(){
   $("#recommendGrid").innerHTML=`<div class="notice">Calcul des recommandations…</div>`;
   await ensureRecommendationPool();
+  await enrichPoolFromTaste();
   const pool=[...state.catalog,...fallbackMovies];
   const unique=[...new Map(pool.map(m=>[String(m.id),normalizedMovie(m)])).values()];
   const scoredMovies=unique
     .map(movie=>({movie,score:candidateScore(movie,state.mode)}))
-    .filter(item=>item.score>-1000)
+    .filter(item=>{
+      if(item.score<=-1000)return false;
+      const movie=item.movie;
+      const hasOrigin=(state.recommendationOrigins?.[String(movie.id)]||[]).length>0;
+
+      if(state.mode==="close"){
+        const sufficientlyKnown=Number(movie.vote_count||0)>=250;
+        const sufficientlyRated=Number(movie.vote_average||0)>=6.6;
+        return hasOrigin||(sufficientlyKnown&&sufficientlyRated);
+      }
+
+      return true;
+    })
     .sort((a,b)=>b.score-a.score);
 
   const choices=[];
@@ -1240,7 +1345,10 @@ async function recommend(){
   save();
   $("#moodSummary").textContent=`Ambiance : ${moodLabel()}${state.aiBrief?.summary ? " · "+state.aiBrief.summary : ""}`;
   $("#recommendGrid").innerHTML=choices.map((m,index)=>{
-    const compat=Math.max(63,Math.min(98,Math.round(70+candidateScore(m,state.mode)/8)));
+    const rawScore=candidateScore(m,state.mode);
+    const topScore=choices.length?candidateScore(choices[0],state.mode):rawScore;
+    const relative=topScore>0?rawScore/topScore:0;
+    const compat=Math.max(68,Math.min(96,Math.round(72+relative*22-index*2)));
     return `<article class="rec-card">
       <div class="poster">
         ${posterUrl(m)?`<img src="${posterUrl(m)}" alt="Affiche de ${escapeHtml(m.title)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">`:""}
