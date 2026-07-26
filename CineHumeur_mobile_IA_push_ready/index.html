@@ -1054,9 +1054,49 @@ $("#modeButtons").onclick=e=>{
   document.querySelectorAll(".mode-btn").forEach(b=>b.classList.remove("active"));
   btn.classList.add("active");state.mode=btn.dataset.mode;save();recommend();
 };
-$("#resetBtn").onclick=()=>{
-  if(confirm("Effacer le profil et tous les avis enregistrés sur cet appareil ?")){
-    localStorage.removeItem(LOCAL_KEY);state={...defaultState};location.reload();
+$("#resetBtn").onclick=async()=>{
+  const confirmed=confirm(
+    "Effacer définitivement ton profil, tes avis et tes préférences ?"
+  );
+
+  if(!confirmed)return;
+
+  const resetButton=$("#resetBtn");
+  resetButton.disabled=true;
+  resetButton.textContent="Réinitialisation…";
+
+  try{
+    state=normalizeState({
+      ...defaultState,
+      ratings:{},
+      catalog:[],
+      recent:[],
+      selectedGenres:[],
+      aiPrompt:"",
+      aiBrief:null
+    });
+
+    localStorage.removeItem(LOCAL_KEY);
+
+    if(currentUser&&supabaseClient){
+      const {error}=await supabaseClient
+        .from("cinehumeur_profiles")
+        .delete()
+        .eq("user_id",currentUser.id);
+
+      if(error)throw error;
+    }
+
+    localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
+    location.reload();
+  }catch(error){
+    console.error("Erreur de réinitialisation :",error);
+    alert(
+      "Le profil local a été réinitialisé, mais la suppression dans Supabase a échoué."
+    );
+
+    resetButton.disabled=false;
+    resetButton.textContent="Réinitialiser le profil";
   }
 };
 
