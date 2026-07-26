@@ -621,13 +621,17 @@
         <section class="preference-shell">
           <div class="preference-title"><div><div class="step">Ce soir</div><h3 style="margin-bottom:5px">De quoi as-tu envie ?</h3><p class="muted" style="margin:0">Choisis une humeur puis, si tu veux, précise un ou plusieurs genres.</p></div><button class="ghost" id="clearPrefsBtn">Effacer</button></div>
           <div class="choice-grid" id="moodChoices">
-            <button class="choice-btn" data-mood="comfort">🫶 Réconfortant<small>Doux, chaleureux, positif</small></button>
-            <button class="choice-btn" data-mood="fun">😄 Léger et drôle<small>Pour décrocher et sourire</small></button>
-            <button class="choice-btn" data-mood="intense">⚡ Intense<small>Tension, rythme, adrénaline</small></button>
-            <button class="choice-btn" data-mood="emotion">🥹 Émouvant<small>Une histoire qui reste</small></button>
-            <button class="choice-btn" data-mood="escape">🚀 Évasion<small>Un autre monde, une aventure</small></button>
-            <button class="choice-btn" data-mood="dark">🌒 Sombre<small>Ambiance forte et troublante</small></button>
-            <button class="choice-btn" data-mood="smart">🧠 Stimulant<small>Complexe, mystérieux, cérébral</small></button>
+            <button class="choice-btn" data-mood="fun">😂 Je veux rire<small>Comédie réellement légère</small></button>
+            <button class="choice-btn" data-mood="relax">😌 Me détendre<small>Doux, agréable, sans lourdeur</small></button>
+            <button class="choice-btn" data-mood="emotion">🥹 Être ému<small>Une histoire forte et sensible</small></button>
+            <button class="choice-btn" data-mood="smart">🧠 Réfléchir<small>Mystère, idées, récit stimulant</small></button>
+            <button class="choice-btn" data-mood="action">💥 De l’action<small>Rythme, aventure, adrénaline</small></button>
+            <button class="choice-btn" data-mood="family">👨‍👩‍👧 En famille<small>Accessible et rassembleur</small></button>
+            <button class="choice-btn" data-mood="friends">🍿 Entre amis<small>Fun, efficace, facile à partager</small></button>
+            <button class="choice-btn" data-mood="couple">❤️ En couple<small>Romance, charme ou émotion légère</small></button>
+            <button class="choice-btn" data-mood="masterpiece">🎥 Un grand film<small>Qualité avant tout</small></button>
+            <button class="choice-btn" data-mood="dark">🌒 Quelque chose de sombre<small>Thriller, crime ou horreur</small></button>
+            <button class="choice-btn" data-mood="escape">🚀 M’évader<small>Aventure, imaginaire, découverte</small></button>
             <button class="choice-btn" data-mood="surprise">🎲 Surprends-moi<small>Sortir de mes habitudes</small></button>
           </div>
           <div class="genre-cloud" id="genreChoices"></div>
@@ -1189,6 +1193,234 @@ function ratedGroups(){
   return groups;
 }
 
+
+const GENRE={
+  ACTION:28,
+  ADVENTURE:12,
+  ANIMATION:16,
+  COMEDY:35,
+  CRIME:80,
+  DOCUMENTARY:99,
+  DRAMA:18,
+  FAMILY:10751,
+  FANTASY:14,
+  HISTORY:36,
+  HORROR:27,
+  MUSIC:10402,
+  MYSTERY:9648,
+  ROMANCE:10749,
+  SCIENCE_FICTION:878,
+  TV_MOVIE:10770,
+  THRILLER:53,
+  WAR:10752,
+  WESTERN:37
+};
+
+function hasAnyGenre(movie,genres){
+  const ids=new Set(movie.genre_ids||[]);
+  return genres.some(genre=>ids.has(genre));
+}
+
+function intentionRule(movie,intention=state.mood){
+  const genres=movie.genre_ids||[];
+  const rating=Number(movie.vote_average||0);
+  const votes=Number(movie.vote_count||0);
+
+  const result={
+    allowed:true,
+    bonus:0,
+    reason:""
+  };
+
+  if(!intention)return result;
+
+  if(intention==="fun"){
+    const hasComedy=hasAnyGenre(movie,[GENRE.COMEDY]);
+    const lightSupport=hasAnyGenre(movie,[
+      GENRE.ANIMATION,
+      GENRE.ADVENTURE,
+      GENRE.FAMILY,
+      GENRE.ROMANCE,
+      GENRE.MUSIC
+    ]);
+    const heavy=hasAnyGenre(movie,[
+      GENRE.HORROR,
+      GENRE.WAR,
+      GENRE.HISTORY
+    ]);
+    const darkDrama=
+      genres.includes(GENRE.DRAMA)&&
+      !hasComedy&&
+      !lightSupport;
+    const darkCrime=
+      genres.includes(GENRE.CRIME)&&
+      !hasComedy;
+
+    result.allowed=(hasComedy||lightSupport)&&!heavy&&!darkDrama&&!darkCrime;
+    result.bonus=hasComedy?34:14;
+    result.reason="sélectionné comme une vraie proposition légère et drôle";
+    return result;
+  }
+
+  if(intention==="relax"){
+    const pleasant=hasAnyGenre(movie,[
+      GENRE.COMEDY,
+      GENRE.FAMILY,
+      GENRE.ANIMATION,
+      GENRE.ROMANCE,
+      GENRE.MUSIC,
+      GENRE.ADVENTURE
+    ]);
+    const stressful=hasAnyGenre(movie,[
+      GENRE.HORROR,
+      GENRE.WAR,
+      GENRE.CRIME,
+      GENRE.THRILLER
+    ]);
+    const pureDrama=genres.includes(GENRE.DRAMA)&&!pleasant;
+
+    result.allowed=pleasant&&!stressful&&!pureDrama;
+    result.bonus=hasAnyGenre(movie,[GENRE.COMEDY,GENRE.FAMILY])?25:13;
+    result.reason="retenu pour une séance détendue, sans ambiance trop lourde";
+    return result;
+  }
+
+  if(intention==="emotion"){
+    result.allowed=hasAnyGenre(movie,[
+      GENRE.DRAMA,
+      GENRE.ROMANCE,
+      GENRE.FAMILY,
+      GENRE.ANIMATION
+    ]);
+    result.bonus=genres.includes(GENRE.DRAMA)?24:14;
+    result.reason="retenu pour son potentiel émotionnel";
+    return result;
+  }
+
+  if(intention==="smart"){
+    result.allowed=hasAnyGenre(movie,[
+      GENRE.MYSTERY,
+      GENRE.SCIENCE_FICTION,
+      GENRE.THRILLER,
+      GENRE.DRAMA,
+      GENRE.HISTORY,
+      GENRE.DOCUMENTARY
+    ]);
+    result.bonus=hasAnyGenre(movie,[GENRE.MYSTERY,GENRE.SCIENCE_FICTION])?27:13;
+    result.reason="retenu pour son récit stimulant ou ses idées";
+    return result;
+  }
+
+  if(intention==="action"){
+    result.allowed=hasAnyGenre(movie,[
+      GENRE.ACTION,
+      GENRE.ADVENTURE,
+      GENRE.THRILLER,
+      GENRE.SCIENCE_FICTION,
+      GENRE.FANTASY
+    ]);
+    result.bonus=genres.includes(GENRE.ACTION)?30:16;
+    result.reason="retenu pour son rythme et son énergie";
+    return result;
+  }
+
+  if(intention==="family"){
+    const familySafe=hasAnyGenre(movie,[
+      GENRE.FAMILY,
+      GENRE.ANIMATION,
+      GENRE.COMEDY,
+      GENRE.ADVENTURE,
+      GENRE.FANTASY
+    ]);
+    const adultHeavy=hasAnyGenre(movie,[
+      GENRE.HORROR,
+      GENRE.CRIME,
+      GENRE.WAR
+    ]);
+    result.allowed=familySafe&&!adultHeavy;
+    result.bonus=hasAnyGenre(movie,[GENRE.FAMILY,GENRE.ANIMATION])?32:14;
+    result.reason="retenu pour une séance familiale accessible";
+    return result;
+  }
+
+  if(intention==="friends"){
+    const social=hasAnyGenre(movie,[
+      GENRE.COMEDY,
+      GENRE.ACTION,
+      GENRE.ADVENTURE,
+      GENRE.HORROR,
+      GENRE.THRILLER,
+      GENRE.SCIENCE_FICTION
+    ]);
+    const slowHeavy=
+      genres.includes(GENRE.DRAMA)&&
+      !social;
+    result.allowed=social&&!slowHeavy;
+    result.bonus=hasAnyGenre(movie,[GENRE.COMEDY,GENRE.ACTION])?26:14;
+    result.reason="retenu comme un film efficace à regarder entre amis";
+    return result;
+  }
+
+  if(intention==="couple"){
+    const coupleFriendly=hasAnyGenre(movie,[
+      GENRE.ROMANCE,
+      GENRE.COMEDY,
+      GENRE.DRAMA,
+      GENRE.MUSIC
+    ]);
+    const unpleasant=hasAnyGenre(movie,[
+      GENRE.HORROR,
+      GENRE.WAR
+    ]);
+    result.allowed=coupleFriendly&&!unpleasant;
+    result.bonus=genres.includes(GENRE.ROMANCE)?29:14;
+    result.reason="retenu pour une soirée à deux";
+    return result;
+  }
+
+  if(intention==="masterpiece"){
+    result.allowed=rating>=7.1&&votes>=500;
+    result.bonus=Math.max(0,(rating-7)*18)+Math.min(Math.log10(votes+1),4)*3;
+    result.reason="retenu avant tout pour sa qualité et sa reconnaissance";
+    return result;
+  }
+
+  if(intention==="dark"){
+    result.allowed=hasAnyGenre(movie,[
+      GENRE.THRILLER,
+      GENRE.CRIME,
+      GENRE.HORROR,
+      GENRE.MYSTERY,
+      GENRE.DRAMA
+    ]);
+    result.bonus=hasAnyGenre(movie,[GENRE.THRILLER,GENRE.CRIME,GENRE.HORROR])?27:12;
+    result.reason="retenu pour son ambiance sombre et tendue";
+    return result;
+  }
+
+  if(intention==="escape"){
+    result.allowed=hasAnyGenre(movie,[
+      GENRE.ADVENTURE,
+      GENRE.FANTASY,
+      GENRE.SCIENCE_FICTION,
+      GENRE.ANIMATION,
+      GENRE.ACTION
+    ]);
+    result.bonus=hasAnyGenre(movie,[GENRE.ADVENTURE,GENRE.FANTASY])?27:14;
+    result.reason="retenu pour sa capacité à faire voyager";
+    return result;
+  }
+
+  if(intention==="surprise"){
+    result.allowed=true;
+    result.bonus=Math.random()*18;
+    result.reason="retenu pour sortir de tes habitudes";
+    return result;
+  }
+
+  return result;
+}
+
 function candidateScore(m,mode){
   const p=profile();
   let score=0;
@@ -1201,13 +1433,9 @@ function candidateScore(m,mode){
   score+=Math.log10((m.popularity||0)+1)*2;
   const selected=new Set(state.selectedGenres||[]);
   (m.genre_ids||[]).forEach(g=>{if(selected.has(g))score+=8});
-  const moodGenres={
-    comfort:[35,10751,10749,16],fun:[35,16,12],intense:[53,28,80],emotion:[18,10749],
-    escape:[12,14,878,16],dark:[53,80,27,9648],smart:[9648,878,18,36],surprise:[]
-  };
-  (moodGenres[state.mood]||[]).forEach(g=>{if((m.genre_ids||[]).includes(g))score+=7});
-  if(state.mood==="comfort"&&m.vote_average>=7)score+=3;
-  if(state.mood==="surprise")score+=Math.random()*18;
+  const intention=intentionRule(m,state.mood);
+  if(!intention.allowed)score-=1000;
+  score+=intention.bonus;
   if(mode==="gems"){
     score+=(m.vote_average||0)*2;
     score-=Math.log10((m.popularity||0)+1)*4;
@@ -1257,6 +1485,7 @@ const brief=state.aiBrief||{};
   return score;
 }
 function reasonFor(m){
+  const intention=intentionRule(m,state.mood);
   const origin=bestRecommendationOrigin(m);
   const groups=ratedGroups();
 
@@ -1279,14 +1508,18 @@ function reasonFor(m){
 
     if(strongOrigins.length>=2){
       const titles=strongOrigins.map(item=>item.title).join(" et ");
-      return `Plusieurs de tes goûts convergent vers ce film, notamment ${titles}. CinéHumeur l’a ensuite filtré selon ton humeur et tes autres avis.`;
+      return `Plusieurs de tes goûts convergent vers ce film, notamment ${titles}. Il a aussi été ${intention.reason}.`;
     }
 
     const verb=origin.rating==="love"?"adoré":"aimé";
     if(state.mode==="gems"){
       return `Une proposition moins connue issue des films recommandés aux personnes ayant ${verb} ${origin.title}.`;
     }
-    return `TMDB le rapproche de ${origin.title}, que tu as ${verb}, puis CinéHumeur l’a retenu selon ton humeur et tes autres avis.`;
+    return `TMDB le rapproche de ${origin.title}, que tu as ${verb}, puis il a été ${intention.reason}.`;
+  }
+
+  if(state.mood&&intention.reason){
+    return `Ce film a été ${intention.reason}, puis départagé selon tes goûts personnels.`;
   }
 
   if(state.mode==="gems")return "Une proposition moins populaire, retenue pour sa qualité et sa proximité avec ton profil.";
@@ -1307,7 +1540,20 @@ function reasonFor(m){
 }
 function recRole(index){return ["🎯 Le choix sûr","💎 La pépite","🚀 La découverte"][index]||"✨ Pour toi"}
 function moodLabel(){
-  const labels={comfort:"Réconfortant",fun:"Léger et drôle",intense:"Intense",emotion:"Émouvant",escape:"Évasion",dark:"Sombre",smart:"Stimulant",surprise:"Surprends-moi"};
+  const labels={
+    fun:"Je veux rire",
+    relax:"Me détendre",
+    emotion:"Être ému",
+    smart:"Réfléchir",
+    action:"De l’action",
+    family:"En famille",
+    friends:"Entre amis",
+    couple:"En couple",
+    masterpiece:"Un grand film",
+    dark:"Quelque chose de sombre",
+    escape:"M’évader",
+    surprise:"Surprends-moi"
+  };
   return labels[state.mood]||"Selon tes goûts";
 }
 
@@ -1578,6 +1824,8 @@ async function recommend(){
       if(item.score<=-1000)return false;
 
       const movie=item.movie;
+      const intention=intentionRule(movie,state.mood);
+      if(!intention.allowed)return false;
       const hasOrigin=(state.recommendationOrigins?.[String(movie.id)]||[]).length>0;
       const votes=Number(movie.vote_count||0);
       const rating=Number(movie.vote_average||0);
@@ -1647,7 +1895,10 @@ async function recommend(){
   }
   state.recent=[...state.recent,...choices.map(m=>String(m.id))].slice(-30);
   save();
-  $("#moodSummary").textContent=`Ambiance : ${moodLabel()}${state.aiBrief?.summary ? " · "+state.aiBrief.summary : ""}`;
+  const intentionNotice=choices.length<3&&state.mood
+    ?" · Peu de films correspondent strictement : aucun genre opposé n’a été ajouté."
+    :"";
+  $("#moodSummary").textContent=`Objectif : ${moodLabel()}${state.aiBrief?.summary ? " · "+state.aiBrief.summary : ""}${intentionNotice}`;
   $("#recommendGrid").innerHTML=choices.map((m,index)=>{
     const rawScore=candidateScore(m,state.mode);
     const topScore=choices.length?candidateScore(choices[0],state.mode):rawScore;
@@ -1955,11 +2206,17 @@ async function askAI(){
   }catch(err){
     state.aiPrompt=prompt;
     const lower=prompt.toLowerCase();
-    if(/rire|drôle|léger|vider la tête/.test(lower))state.mood="fun";
-    else if(/triste|réconfort|positif|doux/.test(lower))state.mood="comfort";
-    else if(/intense|tension|adrénaline/.test(lower))state.mood="intense";
-    else if(/beau|émouvant|pleurer/.test(lower))state.mood="emotion";
-    else if(/aventure|ailleurs|évasion/.test(lower))state.mood="escape";
+    if(/rire|drôle|comédie|marrant/.test(lower))state.mood="fun";
+    else if(/détendre|calme|doux|léger|vider la tête/.test(lower))state.mood="relax";
+    else if(/émouvant|pleurer|émotion|touchant/.test(lower))state.mood="emotion";
+    else if(/réfléchir|complexe|mystère|cérébral/.test(lower))state.mood="smart";
+    else if(/action|adrénaline|explosion|rythme/.test(lower))state.mood="action";
+    else if(/famille|enfant/.test(lower))state.mood="family";
+    else if(/amis|potes|soirée/.test(lower))state.mood="friends";
+    else if(/couple|romantique|romance/.test(lower))state.mood="couple";
+    else if(/chef.?d.?œuvre|grand film|incontournable/.test(lower))state.mood="masterpiece";
+    else if(/sombre|horreur|thriller|angoisse/.test(lower))state.mood="dark";
+    else if(/aventure|ailleurs|évasion|imaginaire/.test(lower))state.mood="escape";
     else state.mood="surprise";
     state.aiBrief={summary:"Interprétation locale de ton envie",constraints:[],preferred_genres:[],avoid_genres:[]};
     save();renderPreferences();
