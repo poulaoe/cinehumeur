@@ -1,3 +1,4 @@
+
 const TMDB_BASE="https://api.themoviedb.org/3";
 
 function number(value,fallback=0){
@@ -41,6 +42,50 @@ function normalized(movie){
     overview:movie.overview||"",
     original_language:movie.original_language||""
   };
+}
+
+
+function bayesianRating(movie){
+  const votes=Math.max(0,number(movie.vote_count));
+  const rating=Math.max(0,number(movie.vote_average));
+  const minimumVotes=500;
+  const globalMean=6.2;
+
+  return (
+    (votes/(votes+minimumVotes))*rating+
+    (minimumVotes/(votes+minimumVotes))*globalMean
+  );
+}
+
+function isLowConfidenceFrench(item){
+  const movie=item.movie;
+  if(movie.original_language!=="fr")return false;
+
+  const hasTasteSignal=item.sourceCount>0;
+  if(hasTasteSignal)return false;
+
+  const votes=number(movie.vote_count);
+  const bayesian=bayesianRating(movie);
+  const popularity=number(movie.popularity);
+
+  // Un film français de complément doit avoir suffisamment de recul public.
+  return votes<250||bayesian<6.25||popularity<2;
+}
+
+function isLikelyWeakCandidate(item){
+  const movie=item.movie;
+  const votes=number(movie.vote_count);
+  const rating=number(movie.vote_average);
+  const bayesian=bayesianRating(movie);
+  const genres=Array.isArray(movie.genre_ids)?movie.genre_ids:[];
+
+  // Téléfilms et titres trop peu évalués sont souvent très instables.
+  if(genres.includes(10770)&&item.sourceCount===0)return true;
+  if(item.sourceCount===0&&votes<150)return true;
+  if(item.sourceCount===0&&rating<6.0)return true;
+  if(item.sourceCount===0&&bayesian<6.15)return true;
+
+  return false;
 }
 
 export default async function handler(req,res){
@@ -126,8 +171,8 @@ export default async function handler(req,res){
           with_original_language:"fr",
           include_adult:"false",
           include_video:"false",
-          "vote_count.gte":page===1?"180":"80",
-          "vote_average.gte":page===1?"6.2":"5.8"
+          "vote_count.gte":page===1?"600":"250",
+          "vote_average.gte":page===1?"6.6":"6.3"
         });
 
         const payload=await tmdb(`/discover/movie?${params.toString()}`,token);
@@ -153,23 +198,37 @@ export default async function handler(req,res){
 
     const results=[...candidates.values()]
       .filter(item=>!negativeIds.has(String(item.movie.id)))
-      .filter(item=>{
-        const movie=item.movie;
-        const reliable=movie.vote_count>=100&&movie.vote_average>=5.9;
-        return item.sourceCount>0||reliable;
-      })
+      .filter(item=>!isLikelyWeakCandidate(item))
+      .filter(item=>!isLowConfidenceFrench(item))
       .sort((a,b)=>{
+        const qualityA=bayesianRating(a.movie);
+        const qualityB=bayesianRating(b.movie);
+
+        const frenchBonusA=
+          a.movie.original_language==="fr"&&a.sourceCount>0
+            ?8
+            :0;
+
+        const frenchBonusB=
+          b.movie.original_language==="fr"&&b.sourceCount>0
+            ?8
+            :0;
+
         const scoreA=
-          a.sourceScore*18+
-          Math.min(a.sourceCount,4)*12+
-          Math.max(0,a.movie.vote_average-6)*5+
-          Math.min(Math.log10(a.movie.popularity+1),3);
+          a.sourceScore*22+
+          Math.min(a.sourceCount,4)*16+
+          Math.max(0,qualityA-6)*18+
+          Math.min(Math.log10(number(a.movie.vote_count)+1),4)*3+
+          Math.min(Math.log10(number(a.movie.popularity)+1),3)+
+          frenchBonusA;
 
         const scoreB=
-          b.sourceScore*18+
-          Math.min(b.sourceCount,4)*12+
-          Math.max(0,b.movie.vote_average-6)*5+
-          Math.min(Math.log10(b.movie.popularity+1),3);
+          b.sourceScore*22+
+          Math.min(b.sourceCount,4)*16+
+          Math.max(0,qualityB-6)*18+
+          Math.min(Math.log10(number(b.movie.vote_count)+1),4)*3+
+          Math.min(Math.log10(number(b.movie.popularity)+1),3)+
+          frenchBonusB;
 
         return scoreB-scoreA;
       })
