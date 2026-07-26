@@ -637,6 +637,7 @@
           <button class="mode-btn active" data-mode="close">🎯 Proche de mes goûts</button>
           <button class="mode-btn" data-mode="gems">💎 Pépites cachées</button>
           <button class="mode-btn" data-mode="world">🌍 Cinéma du monde</button>
+          <button class="mode-btn" data-mode="french">🇫🇷 Cinéma français</button>
           <button class="mode-btn" data-mode="classic">🎞️ Classiques</button>
           <button class="mode-btn" data-mode="surprise">🎲 Surprise</button>
         </div>
@@ -741,7 +742,8 @@ const defaultState={
   aiPrompt:"",
   aiBrief:null,
   recommendationOrigins:{},
-  expandedTasteIds:[]
+  expandedTasteIds:[],
+  frenchPoolLoaded:false
 };
 let state={...defaultState};
 let visibleMovies=[];
@@ -759,7 +761,7 @@ let authMode="login";
 const LOCAL_KEY="cinehumeur-v3";
 
 function normalizeState(data){
-  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[],recommendationOrigins:data?.recommendationOrigins||{},expandedTasteIds:data?.expandedTasteIds||[]};
+  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[],recommendationOrigins:data?.recommendationOrigins||{},expandedTasteIds:data?.expandedTasteIds||[],frenchPoolLoaded:Boolean(data?.frenchPoolLoaded)};
 }
 function save(){
   localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
@@ -1219,7 +1221,20 @@ function candidateScore(m,mode){
   if(mode==="surprise"){
     score=Math.random()*25+(m.vote_average||0);
   }
-  const brief=state.aiBrief||{};
+  
+  const frenchTaste=frenchAffinity();
+
+  if(isFrenchMovie(m)){
+    // Présence française légère par défaut, forte seulement si le profil la confirme.
+    score+=3;
+    score+=Math.max(-10,Math.min(18,frenchTaste*2));
+
+    if(mode==="french")score+=42;
+  }else if(mode==="french"){
+    score-=30;
+  }
+
+const brief=state.aiBrief||{};
   const preferred=new Set(brief.preferred_genres||[]);
   const avoided=new Set(brief.avoid_genres||[]);
   (m.genre_ids||[]).forEach(g=>{if(preferred.has(g))score+=9;if(avoided.has(g))score-=14});
@@ -1359,25 +1374,113 @@ function bestRecommendationOrigin(movie){
     })[0]||null;
 }
 
+
+function isFrenchMovie(movie){
+  return movie?.original_language==="fr";
+}
+
+async function fetchDiscoverPage({
+  page=1,
+  originalLanguage="",
+  region="FR",
+  sortBy="popularity.desc",
+  minVotes=0,
+  minRating=0
+}={}){
+  const params=new URLSearchParams({
+    page:String(page),
+    region,
+    sort_by:sortBy,
+    vote_count_gte:String(minVotes),
+    vote_average_gte:String(minRating)
+  });
+
+  if(originalLanguage){
+    params.set("with_original_language",originalLanguage);
+  }
+
+  const response=await fetch(`/api/discover?${params.toString()}`);
+  if(!response.ok){
+    const payload=await response.json().catch(()=>({}));
+    throw new Error(payload.error||"Catalogue indisponible");
+  }
+
+  const payload=await response.json();
+  return Array.isArray(payload.results)
+    ?payload.results.map(normalizedMovie)
+    :[];
+}
+
+async function ensureFrenchPool(){
+  const existingFrench=state.catalog.filter(isFrenchMovie).length;
+  if(existingFrench>=50&&state.frenchPoolLoaded)return;
+
+  const requests=[
+    {page:1,originalLanguage:"fr",sortBy:"vote_average.desc",minVotes:250,minRating:6.2},
+    {page:2,originalLanguage:"fr",sortBy:"vote_average.desc",minVotes:120,minRating:6.0},
+    {page:1,originalLanguage:"fr",sortBy:"popularity.desc",minVotes:80,minRating:5.8},
+    {page:2,originalLanguage:"fr",sortBy:"popularity.desc",minVotes:50,minRating:5.6}
+  ];
+
+  const settled=await Promise.allSettled(
+    requests.map(options=>fetchDiscoverPage(options))
+  );
+
+  const frenchMovies=settled
+    .filter(result=>result.status==="fulfilled")
+    .flatMap(result=>result.value)
+    .filter(isFrenchMovie);
+
+  if(frenchMovies.length){
+    addCatalog(frenchMovies);
+    state.frenchPoolLoaded=true;
+    save();
+  }
+}
+
+function frenchAffinity(){
+  let score=0;
+
+  for(const [id,rating] of Object.entries(state.ratings)){
+    const movie=getRatedMovie(id);
+    if(!movie||!isFrenchMovie(movie))continue;
+
+    if(rating==="love")score+=4;
+    else if(rating==="like")score+=2;
+    else if(rating==="neutral")score+=0.25;
+    else if(rating==="dislike")score-=3;
+  }
+
+  return score;
+}
+
 async function ensureRecommendationPool(){
-  if(state.catalog.length>=120)return;
-  for(let i=0;i<4;i++){
-    try{
-      const res=await fetch(`/api/discover?page=${Math.max(1,state.page)}`);
-      if(!res.ok)break;
-      const data=await res.json();
-      const items=Array.isArray(data.results)?data.results:[];
-      if(!items.length)break;
-      addCatalog(items);
-      state.page+=1;
-    }catch{
-      break;
+  if(state.catalog.length<180){
+    const pages=[1,2,3,4,5,6];
+
+    for(const page of pages){
+      try{
+        const items=await fetchDiscoverPage({
+          page,
+          region:"FR",
+          sortBy:page%2===0?"vote_average.desc":"popularity.desc",
+          minVotes:page%2===0?300:100,
+          minRating:page%2===0?6.2:5.8
+        });
+
+        if(items.length)addCatalog(items);
+      }catch{
+        break;
+      }
     }
   }
+
+  await ensureFrenchPool();
 }
 async function recommend(){
   $("#recommendGrid").innerHTML=`<div class="notice">Calcul des recommandations…</div>`;
   await ensureRecommendationPool();
+  await ensureFrenchPool();
   await enrichPoolFromTaste();
   const pool=[...state.catalog,...fallbackMovies];
   const unique=[...new Map(pool.map(m=>[String(m.id),normalizedMovie(m)])).values()];
@@ -1385,13 +1488,21 @@ async function recommend(){
     .map(movie=>({movie,score:candidateScore(movie,state.mode)}))
     .filter(item=>{
       if(item.score<=-1000)return false;
+
       const movie=item.movie;
       const hasOrigin=(state.recommendationOrigins?.[String(movie.id)]||[]).length>0;
+      const votes=Number(movie.vote_count||0);
+      const rating=Number(movie.vote_average||0);
+
+      // On écarte les titres trop peu documentés, sauf vraie proximité TMDB.
+      if(!hasOrigin&&(votes<120||rating<6.0))return false;
 
       if(state.mode==="close"){
-        const sufficientlyKnown=Number(movie.vote_count||0)>=250;
-        const sufficientlyRated=Number(movie.vote_average||0)>=6.6;
-        return hasOrigin||(sufficientlyKnown&&sufficientlyRated);
+        return hasOrigin||(votes>=300&&rating>=6.4);
+      }
+
+      if(state.mode==="french"){
+        return isFrenchMovie(movie)&&(hasOrigin||(votes>=80&&rating>=5.9));
       }
 
       return true;
@@ -1401,17 +1512,50 @@ async function recommend(){
   const choices=[];
   const genreCounts=new Map();
 
-  for(const item of scoredMovies){
-    const movie=item.movie;
+  function canAdd(movie){
     const mainGenre=(movie.genre_ids||[])[0]||"unknown";
-    const count=genreCounts.get(mainGenre)||0;
+    return (genreCounts.get(mainGenre)||0)<2;
+  }
 
-    if(count>=2)continue;
+  function addChoice(movie){
+    if(!movie||choices.some(choice=>String(choice.id)===String(movie.id)))return false;
+    if(!canAdd(movie))return false;
 
+    const mainGenre=(movie.genre_ids||[])[0]||"unknown";
     choices.push(movie);
-    genreCounts.set(mainGenre,count+1);
+    genreCounts.set(mainGenre,(genreCounts.get(mainGenre)||0)+1);
+    return true;
+  }
 
-    if(choices.length===3)break;
+  // En mode français : trois films français.
+  if(state.mode==="french"){
+    for(const item of scoredMovies){
+      if(isFrenchMovie(item.movie))addChoice(item.movie);
+      if(choices.length===3)break;
+    }
+  }else{
+    // Choix principal et deuxième proposition selon le classement général.
+    for(const item of scoredMovies){
+      addChoice(item.movie);
+      if(choices.length===2)break;
+    }
+
+    // En mode proche, inclure un bon film français lorsque son score reste crédible.
+    if(state.mode==="close"){
+      const bestScore=scoredMovies[0]?.score||0;
+      const frenchCandidate=scoredMovies.find(item=>
+        isFrenchMovie(item.movie)&&
+        item.score>=bestScore*0.72
+      );
+
+      if(frenchCandidate)addChoice(frenchCandidate.movie);
+    }
+
+    // Compléter sans imposer artificiellement une nationalité.
+    for(const item of scoredMovies){
+      addChoice(item.movie);
+      if(choices.length===3)break;
+    }
   }
   state.recent=[...state.recent,...choices.map(m=>String(m.id))].slice(-30);
   save();
@@ -1429,7 +1573,7 @@ async function recommend(){
       <div class="rec-body">
         <span class="rec-label">${recRole(index)}</span><span class="score">${compat}% compatible</span>
         <h3 style="margin:12px 0 6px">${escapeHtml(m.title)}</h3>
-        <div class="movie-meta">${yearOf(m)} · ${genreNames(m).slice(0,3).join(" / ")}</div>
+        <div class="movie-meta">${yearOf(m)} · ${genreNames(m).slice(0,3).join(" / ")}${isFrenchMovie(m)?" · 🇫🇷 Film français":""}</div>
         <p class="reason">${reasonFor(m)}</p>
         <div class="rec-actions" style="grid-template-columns:repeat(2,1fr)">
           <button class="secondary recRate" data-id="${m.id}" data-rate="love">❤️ J’ai adoré</button>
