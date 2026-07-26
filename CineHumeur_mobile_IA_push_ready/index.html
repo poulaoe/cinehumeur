@@ -968,63 +968,228 @@ function profile(){
   }
   return scores;
 }
-function candidateScore(m,mode){
-  const p=profile();
-  let score=0;
-  (m.genre_ids||[]).forEach(g=>score+=(p.genres[g]||0)*2);
-  score+=(p.languages[m.original_language]||0);
-  const y=yearOf(m);
-  const era=typeof y==="number"?(y<1985?"old":y<2010?"mid":"new"):"new";
-  score+=(p.years[era]||0)*.25;
-  score+=Math.min(m.vote_average||0,9)*1.2;
-  score+=Math.log10((m.popularity||0)+1)*2;
-  const selected=new Set(state.selectedGenres||[]);
-  (m.genre_ids||[]).forEach(g=>{if(selected.has(g))score+=8});
-  const moodGenres={
-    comfort:[35,10751,10749,16],fun:[35,16,12],intense:[53,28,80],emotion:[18,10749],
-    escape:[12,14,878,16],dark:[53,80,27,9648],smart:[9648,878,18,36],surprise:[]
-  };
-  (moodGenres[state.mood]||[]).forEach(g=>{if((m.genre_ids||[]).includes(g))score+=7});
-  if(state.mood==="comfort"&&m.vote_average>=7)score+=3;
-  if(state.mood==="surprise")score+=Math.random()*18;
-  if(mode==="gems"){
-    score+=(m.vote_average||0)*2;
-    score-=Math.log10((m.popularity||0)+1)*4;
-    if((m.vote_count||0)>100)score+=2;
+
+function getRatedMovie(id){
+  return state.catalog.find(x=>String(x.id)===String(id))
+    || fallbackMovies.find(x=>String(x.id)===String(id))
+    || null;
+}
+
+function movieSimilarity(a,b){
+  if(!a||!b)return 0;
+
+  const genresA=new Set(a.genre_ids||[]);
+  const genresB=new Set(b.genre_ids||[]);
+
+  let commonGenres=0;
+  genresA.forEach(id=>{
+    if(genresB.has(id))commonGenres++;
+  });
+
+  const unionSize=new Set([...genresA,...genresB]).size||1;
+  let score=(commonGenres/unionSize)*32;
+
+  if(a.original_language&&b.original_language&&a.original_language===b.original_language){
+    score+=5;
   }
-  if(mode==="world"){
-    score+=m.original_language&&m.original_language!=="en"&&m.original_language!=="fr"?10:-2;
+
+  const yearA=Number(yearOf(a));
+  const yearB=Number(yearOf(b));
+
+  if(Number.isFinite(yearA)&&Number.isFinite(yearB)){
+    const difference=Math.abs(yearA-yearB);
+    if(difference<=3)score+=6;
+    else if(difference<=8)score+=4;
+    else if(difference<=15)score+=2;
   }
-  if(mode==="classic"){
-    score+=typeof y==="number"&&y<2000?12:-3;
-  }
-  if(mode==="surprise"){
-    score=Math.random()*25+(m.vote_average||0);
-  }
-  const brief=state.aiBrief||{};
-  const preferred=new Set(brief.preferred_genres||[]);
-  const avoided=new Set(brief.avoid_genres||[]);
-  (m.genre_ids||[]).forEach(g=>{if(preferred.has(g))score+=9;if(avoided.has(g))score-=14});
-  if(brief.min_rating&&m.vote_average<brief.min_rating)score-=8;
-  if(brief.prefer_less_popular)score-=Math.log10((m.popularity||0)+1)*2.5;
-  if(state.recent.includes(String(m.id)))score-=100;
-  if(state.ratings[m.id])score-=200;
+
+  const ratingDifference=Math.abs(Number(a.vote_average||0)-Number(b.vote_average||0));
+  if(ratingDifference<=0.5)score+=3;
+  else if(ratingDifference<=1)score+=1.5;
+
   return score;
 }
-function reasonFor(m){
-  const p=profile();
-  const moodLabels={comfort:"ton envie d’un film réconfortant",fun:"ton envie de légèreté",intense:"ton envie d’intensité",emotion:"ton envie d’émotion",escape:"ton envie d’évasion",dark:"ton envie d’une ambiance sombre",smart:"ton envie d’un film stimulant",surprise:"ton envie d’être surpris"};
-  const matches=(m.genre_ids||[])
-    .filter(g=>(p.genres[g]||0)>0)
-    .sort((a,b)=>(p.genres[b]||0)-(p.genres[a]||0))
-    .map(g=>GENRES[g]).filter(Boolean).slice(0,2);
-  if(state.mode==="gems")return "Une proposition moins évidente, privilégiant la qualité plutôt que la popularité.";
-  if(state.mode==="world")return "Une ouverture vers le cinéma international pour élargir ton profil.";
-  if(state.mode==="classic")return "Un classique sélectionné pour tester ton affinité avec une autre époque.";
-  if(state.mode==="surprise")return "Une proposition volontairement plus imprévisible pour éviter la bulle de recommandations.";
-  if(state.aiBrief?.explanation)return state.aiBrief.explanation;
-  return matches.length?`Correspond à ton intérêt pour ${matches.join(" et ").toLowerCase()}, tout en tenant compte de ton humeur actuelle.`:"Un choix équilibré basé sur ton humeur et l’ensemble de tes évaluations.";
+
+function ratedGroups(){
+  const groups={loved:[],liked:[],neutral:[],disliked:[]};
+
+  for(const [id,rating] of Object.entries(state.ratings)){
+    const movie=getRatedMovie(id);
+    if(!movie||rating==="unknown")continue;
+
+    if(rating==="love")groups.loved.push(movie);
+    else if(rating==="like")groups.liked.push(movie);
+    else if(rating==="neutral")groups.neutral.push(movie);
+    else if(rating==="dislike")groups.disliked.push(movie);
+  }
+
+  return groups;
 }
+
+function candidateScore(m,mode){
+  const id=String(m.id);
+  if(state.ratings[id])return -10000;
+
+  const groups=ratedGroups();
+  const p=profile();
+  let score=0;
+
+  const lovedSimilarities=groups.loved
+    .map(movie=>movieSimilarity(m,movie))
+    .sort((a,b)=>b-a);
+
+  const likedSimilarities=groups.liked
+    .map(movie=>movieSimilarity(m,movie))
+    .sort((a,b)=>b-a);
+
+  const dislikedSimilarities=groups.disliked
+    .map(movie=>movieSimilarity(m,movie))
+    .sort((a,b)=>b-a);
+
+  score+=(lovedSimilarities[0]||0)*2.4;
+  score+=(lovedSimilarities[1]||0)*1.25;
+  score+=(lovedSimilarities[2]||0)*0.65;
+
+  score+=(likedSimilarities[0]||0)*1.25;
+  score+=(likedSimilarities[1]||0)*0.65;
+
+  score-=(dislikedSimilarities[0]||0)*2;
+  score-=(dislikedSimilarities[1]||0)*0.75;
+
+  (m.genre_ids||[]).forEach(genre=>{
+    score+=(p.genres[genre]||0)*1.4;
+  });
+
+  score+=(p.languages[m.original_language]||0)*0.7;
+
+  const year=Number(yearOf(m));
+  const era=Number.isFinite(year)
+    ? year<1985 ? "old" : year<2010 ? "mid" : "new"
+    : "new";
+
+  score+=(p.years[era]||0)*0.2;
+
+  const selectedGenres=new Set(state.selectedGenres||[]);
+  (m.genre_ids||[]).forEach(genre=>{
+    if(selectedGenres.has(genre))score+=10;
+  });
+
+  const moodGenres={
+    comfort:[35,10751,10749,16],
+    fun:[35,16,12],
+    intense:[53,28,80],
+    emotion:[18,10749],
+    escape:[12,14,878,16],
+    dark:[53,80,27,9648],
+    smart:[9648,878,18,36],
+    surprise:[]
+  };
+
+  (moodGenres[state.mood]||[]).forEach(genre=>{
+    if((m.genre_ids||[]).includes(genre))score+=8;
+  });
+
+  const voteAverage=Number(m.vote_average||0);
+  const voteCount=Number(m.vote_count||0);
+  const popularity=Number(m.popularity||0);
+
+  score+=Math.max(0,voteAverage-5.5)*4;
+
+  if(voteCount>=10000)score+=5;
+  else if(voteCount>=3000)score+=4;
+  else if(voteCount>=500)score+=2;
+  else if(voteCount<50)score-=3;
+
+  score+=Math.min(Math.log10(popularity+1)*1.2,3);
+
+  if(mode==="gems"){
+    score+=voteAverage*2.4;
+    score-=Math.log10(popularity+1)*5;
+    if(voteCount>=100&&voteCount<=5000)score+=8;
+  }
+
+  if(mode==="world"){
+    if(m.original_language&&m.original_language!=="en"&&m.original_language!=="fr")score+=14;
+    else score-=4;
+  }
+
+  if(mode==="classic"){
+    if(Number.isFinite(year)&&year<2000)score+=15;
+    else score-=5;
+  }
+
+  if(mode==="surprise"){
+    score+=Math.random()*18;
+    score-=(lovedSimilarities[0]||0)*0.25;
+  }
+
+  const brief=state.aiBrief||{};
+  const preferredGenres=new Set(brief.preferred_genres||[]);
+  const avoidedGenres=new Set(brief.avoid_genres||[]);
+
+  (m.genre_ids||[]).forEach(genre=>{
+    if(preferredGenres.has(genre))score+=11;
+    if(avoidedGenres.has(genre))score-=22;
+  });
+
+  if(brief.min_rating&&voteAverage<Number(brief.min_rating))score-=18;
+  if(brief.prefer_less_popular)score-=Math.log10(popularity+1)*3;
+  if((state.recent||[]).includes(id))score-=500;
+
+  return score;
+}
+
+function reasonFor(m){
+  const groups=ratedGroups();
+
+  const lovedMatches=groups.loved
+    .map(movie=>({movie,score:movieSimilarity(m,movie)}))
+    .sort((a,b)=>b.score-a.score);
+
+  const likedMatches=groups.liked
+    .map(movie=>({movie,score:movieSimilarity(m,movie)}))
+    .sort((a,b)=>b.score-a.score);
+
+  const bestMatch=lovedMatches[0]||likedMatches[0];
+  const genreText=genreNames(m).slice(0,2).join(" et ").toLowerCase();
+
+  if(state.mode==="gems"){
+    return bestMatch
+      ? `Une pépite moins évidente, proche de ${bestMatch.movie.title}, mais volontairement moins populaire.`
+      : "Une pépite moins connue sélectionnée pour sa qualité.";
+  }
+
+  if(state.mode==="world"){
+    return bestMatch
+      ? `Un film international qui conserve des points communs avec ${bestMatch.movie.title}.`
+      : "Une proposition internationale choisie pour élargir tes découvertes.";
+  }
+
+  if(state.mode==="classic"){
+    return bestMatch
+      ? `Un classique qui partage plusieurs caractéristiques avec ${bestMatch.movie.title}.`
+      : "Un classique adapté aux genres que tu apprécies.";
+  }
+
+  if(state.mode==="surprise"){
+    return genreText
+      ? `Une proposition plus inattendue, tout en conservant une affinité avec ${genreText}.`
+      : "Une proposition différente de tes habitudes, sans ignorer complètement ton profil.";
+  }
+
+  if(state.aiBrief?.explanation)return state.aiBrief.explanation;
+
+  if(bestMatch&&bestMatch.score>=14){
+    return `Recommandé surtout parce que tu as apprécié ${bestMatch.movie.title}, avec une proximité de genres, d’époque ou d’ambiance.`;
+  }
+
+  if(genreText){
+    return `Correspond à tes préférences pour ${genreText}, tout en évitant les films proches de ceux que tu n’as pas aimés.`;
+  }
+
+  return "Sélectionné à partir de l’ensemble de tes évaluations et de ton envie actuelle.";
+}
+
 function recRole(index){return ["🎯 Le choix sûr","💎 La pépite","🚀 La découverte"][index]||"✨ Pour toi"}
 function moodLabel(){
   const labels={comfort:"Réconfortant",fun:"Léger et drôle",intense:"Intense",emotion:"Émouvant",escape:"Évasion",dark:"Sombre",smart:"Stimulant",surprise:"Surprends-moi"};
@@ -1051,7 +1216,26 @@ async function recommend(){
   await ensureRecommendationPool();
   const pool=[...state.catalog,...fallbackMovies];
   const unique=[...new Map(pool.map(m=>[String(m.id),normalizedMovie(m)])).values()];
-  const choices=unique.sort((a,b)=>candidateScore(b,state.mode)-candidateScore(a,state.mode)).slice(0,3);
+  const scoredMovies=unique
+    .map(movie=>({movie,score:candidateScore(movie,state.mode)}))
+    .filter(item=>item.score>-1000)
+    .sort((a,b)=>b.score-a.score);
+
+  const choices=[];
+  const genreCounts=new Map();
+
+  for(const item of scoredMovies){
+    const movie=item.movie;
+    const mainGenre=(movie.genre_ids||[])[0]||"unknown";
+    const count=genreCounts.get(mainGenre)||0;
+
+    if(count>=2)continue;
+
+    choices.push(movie);
+    genreCounts.set(mainGenre,count+1);
+
+    if(choices.length===3)break;
+  }
   state.recent=[...state.recent,...choices.map(m=>String(m.id))].slice(-30);
   save();
   $("#moodSummary").textContent=`Ambiance : ${moodLabel()}${state.aiBrief?.summary ? " · "+state.aiBrief.summary : ""}`;
