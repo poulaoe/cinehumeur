@@ -1263,25 +1263,31 @@ function intentionRule(movie,intention=state.mood){
   }
 
   if(intention==="relax"){
-    const pleasant=hasAnyGenre(movie,[
+    const trulyRelaxing=hasAnyGenre(movie,[
       GENRE.COMEDY,
       GENRE.FAMILY,
       GENRE.ANIMATION,
       GENRE.ROMANCE,
-      GENRE.MUSIC,
-      GENRE.ADVENTURE
+      GENRE.MUSIC
     ]);
-    const stressful=hasAnyGenre(movie,[
+
+    const heavyOrTense=hasAnyGenre(movie,[
+      GENRE.DRAMA,
       GENRE.HORROR,
       GENRE.WAR,
       GENRE.CRIME,
-      GENRE.THRILLER
+      GENRE.THRILLER,
+      GENRE.HISTORY
     ]);
-    const pureDrama=genres.includes(GENRE.DRAMA)&&!pleasant;
 
-    result.allowed=pleasant&&!stressful&&!pureDrama;
-    result.bonus=hasAnyGenre(movie,[GENRE.COMEDY,GENRE.FAMILY])?25:13;
-    result.reason="retenu pour une séance détendue, sans ambiance trop lourde";
+    const sciFiOrActionOnly=hasAnyGenre(movie,[
+      GENRE.SCIENCE_FICTION,
+      GENRE.ACTION
+    ])&&!trulyRelaxing;
+
+    result.allowed=trulyRelaxing&&!heavyOrTense&&!sciFiOrActionOnly;
+    result.bonus=hasAnyGenre(movie,[GENRE.COMEDY,GENRE.FAMILY,GENRE.ANIMATION])?30:16;
+    result.reason="retenu pour une séance vraiment légère, sans drame ni tension";
     return result;
   }
 
