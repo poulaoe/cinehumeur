@@ -1,0 +1,12 @@
+{
+  "name": "cinehumeur",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CinéHumeur — recommandations de films avec backend TMDB sécurisé",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}
