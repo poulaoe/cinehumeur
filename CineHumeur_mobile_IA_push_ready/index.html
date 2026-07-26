@@ -743,7 +743,8 @@ const defaultState={
   aiBrief:null,
   recommendationOrigins:{},
   expandedTasteIds:[],
-  frenchPoolLoaded:false
+  frenchPoolLoaded:false,
+  personalizedSignature:""
 };
 let state={...defaultState};
 let visibleMovies=[];
@@ -761,7 +762,7 @@ let authMode="login";
 const LOCAL_KEY="cinehumeur-v3";
 
 function normalizeState(data){
-  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[],recommendationOrigins:data?.recommendationOrigins||{},expandedTasteIds:data?.expandedTasteIds||[],frenchPoolLoaded:Boolean(data?.frenchPoolLoaded)};
+  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[],recommendationOrigins:data?.recommendationOrigins||{},expandedTasteIds:data?.expandedTasteIds||[],frenchPoolLoaded:Boolean(data?.frenchPoolLoaded),personalizedSignature:data?.personalizedSignature||""};
 }
 function save(){
   localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
@@ -1243,6 +1244,16 @@ const brief=state.aiBrief||{};
   if(state.recent.includes(String(m.id)))score-=100;
   if(state.ratings[m.id])score-=200;
   score+=originBonus(m);
+
+  const origins=state.recommendationOrigins?.[String(m.id)]||[];
+  const lovedOrigins=origins.filter(origin=>origin.rating==="love").length;
+  const likedOrigins=origins.filter(origin=>origin.rating==="like").length;
+
+  // Plusieurs films préférés qui convergent vers le même candidat
+  // constituent un signal nettement plus fiable.
+  if(lovedOrigins>=2)score+=24;
+  else if(lovedOrigins===1&&likedOrigins>=1)score+=14;
+  else if(likedOrigins>=2)score+=8;
   return score;
 }
 function reasonFor(m){
@@ -1261,6 +1272,16 @@ function reasonFor(m){
   const genreText=genreNames(m).slice(0,2).join(" et ").toLowerCase();
 
   if(origin){
+    const allOrigins=state.recommendationOrigins?.[String(m.id)]||[];
+    const strongOrigins=allOrigins
+      .filter(item=>item.rating==="love"||item.rating==="like")
+      .slice(0,3);
+
+    if(strongOrigins.length>=2){
+      const titles=strongOrigins.map(item=>item.title).join(" et ");
+      return `Plusieurs de tes goûts convergent vers ce film, notamment ${titles}. CinéHumeur l’a ensuite filtré selon ton humeur et tes autres avis.`;
+    }
+
     const verb=origin.rating==="love"?"adoré":"aimé";
     if(state.mode==="gems"){
       return `Une proposition moins connue issue des films recommandés aux personnes ayant ${verb} ${origin.title}.`;
@@ -1288,6 +1309,70 @@ function recRole(index){return ["🎯 Le choix sûr","💎 La pépite","🚀 La 
 function moodLabel(){
   const labels={comfort:"Réconfortant",fun:"Léger et drôle",intense:"Intense",emotion:"Émouvant",escape:"Évasion",dark:"Sombre",smart:"Stimulant",surprise:"Surprends-moi"};
   return labels[state.mood]||"Selon tes goûts";
+}
+
+
+function tasteSignature(){
+  return Object.entries(state.ratings)
+    .filter(([,rating])=>["love","like","dislike"].includes(rating))
+    .sort(([a],[b])=>String(a).localeCompare(String(b)))
+    .map(([id,rating])=>`${id}:${rating}`)
+    .join("|");
+}
+
+async function fetchPersonalizedPool(){
+  const rated=Object.entries(state.ratings)
+    .map(([id,rating])=>{
+      const movie=getRatedMovie(id);
+      return movie?{
+        id:Number(id),
+        title:movie.title,
+        rating
+      }:null;
+    })
+    .filter(Boolean)
+    .filter(item=>["love","like","dislike"].includes(item.rating));
+
+  const positive=rated.filter(item=>item.rating==="love"||item.rating==="like");
+  if(!positive.length)return false;
+
+  const signature=tasteSignature();
+  if(signature&&state.personalizedSignature===signature){
+    return true;
+  }
+
+  try{
+    const response=await fetch("/api/personalized",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        rated,
+        region:"FR",
+        includeFrench:true,
+        limit:120
+      })
+    });
+
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      throw new Error(payload.error||"Moteur personnalisé indisponible");
+    }
+
+    const movies=(payload.results||[]).map(normalizedMovie);
+    if(movies.length)addCatalog(movies);
+
+    state.recommendationOrigins={
+      ...(state.recommendationOrigins||{}),
+      ...(payload.origins||{})
+    };
+
+    state.personalizedSignature=signature;
+    save();
+    return movies.length>0;
+  }catch(error){
+    console.warn("Moteur personnalisé indisponible, utilisation du mode local.",error);
+    return false;
+  }
 }
 
 function strongestRatedMovies(limit=4){
@@ -1481,7 +1566,10 @@ async function recommend(){
   $("#recommendGrid").innerHTML=`<div class="notice">Calcul des recommandations…</div>`;
   await ensureRecommendationPool();
   await ensureFrenchPool();
-  await enrichPoolFromTaste();
+  const personalizedLoaded=await fetchPersonalizedPool();
+  if(!personalizedLoaded){
+    await enrichPoolFromTaste();
+  }
   const pool=[...state.catalog,...fallbackMovies];
   const unique=[...new Map(pool.map(m=>[String(m.id),normalizedMovie(m)])).values()];
   const scoredMovies=unique
