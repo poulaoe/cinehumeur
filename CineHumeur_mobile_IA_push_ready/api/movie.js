@@ -27,6 +27,15 @@ async function tmdbRequest(path, headers) {
   return response.json();
 }
 
+function removeDuplicateVideos(videos) {
+  return videos.filter(
+    (video, index, array) =>
+      video.site === "YouTube" &&
+      video.key &&
+      index === array.findIndex(item => item.key === video.key)
+  );
+}
+
 export default async function handler(req, res) {
   const headers = getHeaders();
 
@@ -45,48 +54,73 @@ export default async function handler(req, res) {
   }
 
   try {
-    const [movie, credits, recommendations, frenchVideos, englishVideos, releases] =
-      await Promise.all([
-        tmdbRequest(`/movie/${id}?language=fr-FR`, headers),
+    const [
+      movie,
+      credits,
+      recommendations,
+      frenchVideos,
+      englishVideos,
+      allVideos,
+      releases,
+    ] = await Promise.all([
+      tmdbRequest(
+        `/movie/${id}?language=fr-FR`,
+        headers
+      ),
 
-        tmdbRequest(
-          `/movie/${id}/credits?language=fr-FR`,
-          headers
-        ).catch(() => ({ cast: [], crew: [] })),
+      tmdbRequest(
+        `/movie/${id}/credits?language=fr-FR`,
+        headers
+      ).catch(() => ({
+        cast: [],
+        crew: [],
+      })),
 
-        tmdbRequest(
-          `/movie/${id}/recommendations?language=fr-FR&page=1`,
-          headers
-        ).catch(() => ({ results: [] })),
+      tmdbRequest(
+        `/movie/${id}/recommendations?language=fr-FR&page=1`,
+        headers
+      ).catch(() => ({
+        results: [],
+      })),
 
-        tmdbRequest(
-          `/movie/${id}/videos?language=fr-FR`,
-          headers
-        ).catch(() => ({ results: [] })),
+      tmdbRequest(
+        `/movie/${id}/videos?language=fr-FR`,
+        headers
+      ).catch(() => ({
+        results: [],
+      })),
 
-        tmdbRequest(
-          `/movie/${id}/videos?language=en-US`,
-          headers
-        ).catch(() => ({ results: [] })),
+      tmdbRequest(
+        `/movie/${id}/videos?language=en-US`,
+        headers
+      ).catch(() => ({
+        results: [],
+      })),
 
-        tmdbRequest(
-          `/movie/${id}/release_dates`,
-          headers
-        ).catch(() => ({ results: [] })),
-      ]);
+      tmdbRequest(
+        `/movie/${id}/videos`,
+        headers
+      ).catch(() => ({
+        results: [],
+      })),
+
+      tmdbRequest(
+        `/movie/${id}/release_dates`,
+        headers
+      ).catch(() => ({
+        results: [],
+      })),
+    ]);
 
     const frenchResults = frenchVideos.results || [];
     const englishResults = englishVideos.results || [];
+    const allResults = allVideos.results || [];
 
-    const videos = [
+    const videos = removeDuplicateVideos([
       ...frenchResults,
-      ...englishResults.filter(
-        englishVideo =>
-          !frenchResults.some(
-            frenchVideo => frenchVideo.key === englishVideo.key
-          )
-      ),
-    ];
+      ...englishResults,
+      ...allResults,
+    ]);
 
     const frenchRelease = (releases.results || []).find(
       item => item.iso_3166_1 === "FR"
