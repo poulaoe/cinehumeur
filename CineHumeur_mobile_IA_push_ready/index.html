@@ -193,6 +193,165 @@
   }
 }
 
+
+/* Fiche complète d'un film */
+.detail-btn{
+  width:100%;
+  margin-top:9px;
+  background:rgba(132,104,255,.12);
+  border:1px solid rgba(132,104,255,.35);
+  color:#ddd7ff;
+}
+.detail-dialog{
+  width:min(940px,calc(100% - 22px));
+  max-height:92vh;
+  overflow:auto;
+}
+.detail-shell{padding:0}
+.detail-hero{
+  position:relative;
+  min-height:310px;
+  display:flex;
+  align-items:flex-end;
+  overflow:hidden;
+  border-radius:22px 22px 0 0;
+  background:#11131b;
+}
+.detail-backdrop{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  opacity:.4;
+}
+.detail-shade{
+  position:absolute;
+  inset:0;
+  background:linear-gradient(to top,rgba(8,9,15,.98),rgba(8,9,15,.2) 65%,rgba(8,9,15,.35));
+}
+.detail-close{
+  position:absolute;
+  top:14px;
+  right:14px;
+  z-index:3;
+}
+.detail-heading{
+  position:relative;
+  z-index:2;
+  display:grid;
+  grid-template-columns:125px 1fr;
+  gap:18px;
+  align-items:end;
+  width:100%;
+  padding:22px;
+}
+.detail-poster{
+  width:125px;
+  aspect-ratio:2/3;
+  object-fit:cover;
+  border-radius:15px;
+  box-shadow:0 16px 38px rgba(0,0,0,.45);
+  background:#171923;
+}
+.detail-title{font-size:clamp(1.65rem,4vw,2.55rem);margin:0 0 7px}
+.detail-tagline{color:#d0c9ff;font-style:italic;margin:7px 0 0}
+.detail-content{padding:22px}
+.detail-facts{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:12px 0 18px;
+}
+.detail-fact{
+  padding:7px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.055);
+  border:1px solid var(--line);
+  color:#e7e7ef;
+  font-size:.84rem;
+}
+.detail-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  margin:16px 0 22px;
+}
+.detail-section{margin:22px 0}
+.detail-section h4{font-size:1.05rem;margin:0 0 11px}
+.detail-overview{line-height:1.68;color:#e2e2e9}
+.cast-grid{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:10px;
+}
+.cast-card{
+  background:rgba(255,255,255,.035);
+  border:1px solid var(--line);
+  border-radius:15px;
+  overflow:hidden;
+}
+.cast-card img{
+  width:100%;
+  aspect-ratio:1/1.18;
+  object-fit:cover;
+  background:#151722;
+}
+.cast-card div{padding:9px}
+.cast-card strong,.cast-card span{display:block}
+.cast-card span{font-size:.75rem;color:var(--muted);margin-top:3px}
+.similar-grid{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:10px;
+}
+.similar-card{
+  padding:0;
+  overflow:hidden;
+  text-align:left;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.035);
+  border-radius:15px;
+}
+.similar-card img{
+  width:100%;
+  aspect-ratio:2/3;
+  object-fit:cover;
+  display:block;
+  background:#151722;
+}
+.similar-card span{
+  display:block;
+  padding:9px;
+  font-size:.78rem;
+  font-weight:800;
+}
+.trailer-wrap{
+  position:relative;
+  width:100%;
+  aspect-ratio:16/9;
+  overflow:hidden;
+  border-radius:16px;
+  background:#08090f;
+}
+.trailer-wrap iframe{width:100%;height:100%;border:0}
+.detail-loading,.detail-error{padding:42px 24px;text-align:center;color:var(--muted)}
+
+@media(max-width:720px){
+  .detail-hero{min-height:270px}
+  .detail-heading{
+    grid-template-columns:85px 1fr;
+    padding:16px;
+    gap:12px;
+  }
+  .detail-poster{width:85px}
+  .detail-content{padding:16px}
+  .cast-grid,.similar-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .detail-actions button{flex:1 1 140px}
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -624,6 +783,7 @@ function filmCard(m){
         ${rateButton(m.id,"dislike","👎","Pas aimé",current)}
         ${rateButton(m.id,"unknown","⏭️","Pas vu",current)}
       </div>
+      <button class="detail-btn openDetail" data-id="${m.id}">🎬 Voir la fiche complète</button>
     </div>
   </article>`;
 }
@@ -684,6 +844,8 @@ function renderOnboarding(){
 
     renderOnboarding();
   });
+
+  bindDetailButtons();
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function genreNames(m){return (m.genre_ids||[]).map(id=>GENRES[id]).filter(Boolean)}
@@ -911,6 +1073,7 @@ async function recommend(){
           <button class="secondary recRate" data-id="${m.id}" data-rate="neutral">😐 C’était moyen</button>
           <button class="secondary recRate" data-id="${m.id}" data-rate="dislike">👎 Je n’ai pas aimé</button>
         </div>
+        <button class="detail-btn openDetail" data-id="${m.id}">▶️ Bande-annonce et fiche complète</button>
       </div>
     </article>`;
   }).join("");
@@ -928,8 +1091,218 @@ async function recommend(){
     updateStats();
     setTimeout(recommend,350);
   });
+  bindDetailButtons();
   updateStats();
 }
+
+function formatRuntime(minutes){
+  const n=Number(minutes||0);
+  if(!n)return "Durée inconnue";
+  const h=Math.floor(n/60);
+  const min=n%60;
+  return h?`${h} h ${min?min+" min":""}`:`${min} min`;
+}
+
+function money(value){
+  const n=Number(value||0);
+  if(!n)return "";
+  return new Intl.NumberFormat("fr-FR",{
+    style:"currency",
+    currency:"USD",
+    maximumFractionDigits:0
+  }).format(n);
+}
+
+function pickTrailer(videos=[]){
+  const youtube=videos.filter(v=>v.site==="YouTube"&&v.key);
+  return youtube.find(v=>v.type==="Trailer"&&v.official)
+    ||youtube.find(v=>v.type==="Trailer")
+    ||youtube.find(v=>v.type==="Teaser"&&v.official)
+    ||youtube[0]
+    ||null;
+}
+
+function bindDetailButtons(){
+  document.querySelectorAll(".openDetail").forEach(btn=>{
+    btn.onclick=()=>openMovieDetail(btn.dataset.id);
+  });
+}
+
+async function openMovieDetail(id){
+  const dialog=$("#movieDetailDialog");
+  const content=$("#movieDetailContent");
+
+  content.innerHTML=`<div class="detail-loading">Chargement de la fiche du film…</div>`;
+  if(!dialog.open)dialog.showModal();
+
+  try{
+    const res=await fetch(`/api/movie?id=${encodeURIComponent(id)}`);
+    if(!res.ok){
+      const data=await res.json().catch(()=>({}));
+      throw new Error(data.error||"Fiche indisponible");
+    }
+
+    const movie=await res.json();
+    const trailer=pickTrailer(movie.videos?.results||[]);
+    const director=(movie.credits?.crew||[]).find(person=>person.job==="Director");
+    const cast=(movie.credits?.cast||[]).slice(0,5);
+    const similar=(movie.recommendations?.results||[])
+      .filter(item=>item.poster_path)
+      .slice(0,5);
+
+    const backdrop=movie.backdrop_path
+      ?`https://image.tmdb.org/t/p/original${movie.backdrop_path}`
+      :"";
+
+    const poster=movie.poster_path
+      ?`https://image.tmdb.org/t/p/w500${movie.poster_path}`
+      :"";
+
+    const genres=(movie.genres||[]).map(g=>g.name).join(" · ");
+    const year=movie.release_date?movie.release_date.slice(0,4):"Année inconnue";
+    const rating=movie.vote_average?`${movie.vote_average.toFixed(1)}/10`:"Non noté";
+    const countries=(movie.production_countries||[]).map(c=>c.name).slice(0,3).join(", ");
+    const certification=movie.certification||"";
+
+    content.innerHTML=`
+      <div class="detail-hero">
+        ${backdrop?`<img class="detail-backdrop" src="${backdrop}" alt="">`:""}
+        <div class="detail-shade"></div>
+        <button class="ghost detail-close" id="closeMovieDetail" aria-label="Fermer">✕</button>
+        <div class="detail-heading">
+          ${poster?`<img class="detail-poster" src="${poster}" alt="Affiche de ${escapeHtml(movie.title)}">`:`<div class="detail-poster poster-fallback">🎬</div>`}
+          <div>
+            <h2 class="detail-title">${escapeHtml(movie.title||"Film")}</h2>
+            <div class="movie-meta">${escapeHtml(year)} · ${escapeHtml(formatRuntime(movie.runtime))} · ⭐ ${escapeHtml(rating)}</div>
+            ${movie.tagline?`<p class="detail-tagline">${escapeHtml(movie.tagline)}</p>`:""}
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-content">
+        <div class="detail-facts">
+          ${genres?`<span class="detail-fact">${escapeHtml(genres)}</span>`:""}
+          ${director?`<span class="detail-fact">Réalisation : ${escapeHtml(director.name)}</span>`:""}
+          ${countries?`<span class="detail-fact">${escapeHtml(countries)}</span>`:""}
+          ${certification?`<span class="detail-fact">${escapeHtml(certification)}</span>`:""}
+        </div>
+
+        <div class="detail-actions">
+          ${trailer?`<button class="primary" id="showTrailerBtn">▶️ Regarder la bande-annonce</button>`:""}
+          <button class="secondary detailRate" data-id="${movie.id}" data-rate="love">❤️ Adoré</button>
+          <button class="secondary detailRate" data-id="${movie.id}" data-rate="like">👍 Aimé</button>
+          <button class="secondary detailRate" data-id="${movie.id}" data-rate="dislike">👎 Pas aimé</button>
+        </div>
+
+        ${trailer?`
+          <div id="trailerSection" class="detail-section hidden">
+            <h4>Bande-annonce</h4>
+            <div class="trailer-wrap">
+              <iframe
+                id="trailerFrame"
+                title="Bande-annonce de ${escapeHtml(movie.title)}"
+                data-src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?rel=0&autoplay=1"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowfullscreen>
+              </iframe>
+            </div>
+          </div>`:""}
+
+        <section class="detail-section">
+          <h4>Synopsis</h4>
+          <p class="detail-overview">${escapeHtml(movie.overview||"Aucun synopsis disponible en français.")}</p>
+        </section>
+
+        ${cast.length?`
+          <section class="detail-section">
+            <h4>Acteurs principaux</h4>
+            <div class="cast-grid">
+              ${cast.map(person=>`
+                <article class="cast-card">
+                  ${person.profile_path
+                    ?`<img src="https://image.tmdb.org/t/p/w300${person.profile_path}" alt="${escapeHtml(person.name)}" loading="lazy">`
+                    :`<div class="poster-fallback" style="aspect-ratio:1/1.18">👤</div>`}
+                  <div>
+                    <strong>${escapeHtml(person.name)}</strong>
+                    <span>${escapeHtml(person.character||"")}</span>
+                  </div>
+                </article>`).join("")}
+            </div>
+          </section>`:""}
+
+        ${(movie.budget||movie.revenue)?`
+          <section class="detail-section">
+            <h4>Informations de production</h4>
+            <div class="detail-facts">
+              ${movie.budget?`<span class="detail-fact">Budget : ${money(movie.budget)}</span>`:""}
+              ${movie.revenue?`<span class="detail-fact">Recettes : ${money(movie.revenue)}</span>`:""}
+            </div>
+          </section>`:""}
+
+        ${similar.length?`
+          <section class="detail-section">
+            <h4>Films similaires</h4>
+            <div class="similar-grid">
+              ${similar.map(item=>`
+                <button class="similar-card openSimilar" data-id="${item.id}">
+                  <img src="https://image.tmdb.org/t/p/w342${item.poster_path}" alt="Affiche de ${escapeHtml(item.title)}" loading="lazy">
+                  <span>${escapeHtml(item.title)}</span>
+                </button>`).join("")}
+            </div>
+          </section>`:""}
+
+        <footer>Données et affiches fournies par TMDB. Bande-annonce hébergée par YouTube.</footer>
+      </div>
+    `;
+
+    $("#closeMovieDetail").onclick=()=>{
+      const frame=$("#trailerFrame");
+      if(frame)frame.src="";
+      dialog.close();
+    };
+
+    dialog.onclick=event=>{
+      if(event.target===dialog){
+        const frame=$("#trailerFrame");
+        if(frame)frame.src="";
+        dialog.close();
+      }
+    };
+
+    if(trailer){
+      $("#showTrailerBtn").onclick=()=>{
+        const section=$("#trailerSection");
+        const frame=$("#trailerFrame");
+        section.classList.remove("hidden");
+        if(!frame.src)frame.src=frame.dataset.src;
+        section.scrollIntoView({behavior:"smooth",block:"start"});
+      };
+    }
+
+    document.querySelectorAll(".detailRate").forEach(btn=>{
+      btn.onclick=()=>{
+        state.ratings[String(btn.dataset.id)]=btn.dataset.rate;
+        save();
+        updateStats();
+        btn.textContent="✓ Avis enregistré";
+      };
+    });
+
+    document.querySelectorAll(".openSimilar").forEach(btn=>{
+      btn.onclick=()=>openMovieDetail(btn.dataset.id);
+    });
+
+  }catch(error){
+    content.innerHTML=`
+      <div class="detail-error">
+        <h3>Fiche indisponible</h3>
+        <p>${escapeHtml(error.message)}</p>
+        <button class="secondary" id="closeMovieDetail">Fermer</button>
+      </div>`;
+    $("#closeMovieDetail").onclick=()=>dialog.close();
+  }
+}
+
 function updateStats(){
   const c=ratingCounts();
   $("#ratedStat").textContent=c.total;
@@ -1054,49 +1427,9 @@ $("#modeButtons").onclick=e=>{
   document.querySelectorAll(".mode-btn").forEach(b=>b.classList.remove("active"));
   btn.classList.add("active");state.mode=btn.dataset.mode;save();recommend();
 };
-$("#resetBtn").onclick=async()=>{
-  const confirmed=confirm(
-    "Effacer définitivement ton profil, tes avis et tes préférences ?"
-  );
-
-  if(!confirmed)return;
-
-  const resetButton=$("#resetBtn");
-  resetButton.disabled=true;
-  resetButton.textContent="Réinitialisation…";
-
-  try{
-    state=normalizeState({
-      ...defaultState,
-      ratings:{},
-      catalog:[],
-      recent:[],
-      selectedGenres:[],
-      aiPrompt:"",
-      aiBrief:null
-    });
-
-    localStorage.removeItem(LOCAL_KEY);
-
-    if(currentUser&&supabaseClient){
-      const {error}=await supabaseClient
-        .from("cinehumeur_profiles")
-        .delete()
-        .eq("user_id",currentUser.id);
-
-      if(error)throw error;
-    }
-
-    localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
-    location.reload();
-  }catch(error){
-    console.error("Erreur de réinitialisation :",error);
-    alert(
-      "Le profil local a été réinitialisé, mais la suppression dans Supabase a échoué."
-    );
-
-    resetButton.disabled=false;
-    resetButton.textContent="Réinitialiser le profil";
+$("#resetBtn").onclick=()=>{
+  if(confirm("Effacer le profil et tous les avis enregistrés sur cet appareil ?")){
+    localStorage.removeItem(LOCAL_KEY);state={...defaultState};location.reload();
   }
 };
 
@@ -1117,5 +1450,12 @@ bindPreferences();
 initAuth();
 if(usefulCount()>=MIN_USEFUL)$("#resumeBtn").textContent="Reprendre mes recommandations";
 </script>
+
+<dialog id="movieDetailDialog" class="detail-dialog">
+  <div id="movieDetailContent" class="detail-shell">
+    <div class="detail-loading">Chargement de la fiche du film…</div>
+  </div>
+</dialog>
+
 </body>
 </html>
