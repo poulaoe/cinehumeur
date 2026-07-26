@@ -279,7 +279,54 @@
 }
 .detail-section{margin:22px 0}
 .detail-section h4{font-size:1.05rem;margin:0 0 11px}
+
 .detail-overview{line-height:1.68;color:#e2e2e9}
+.external-ratings{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:10px;
+}
+.external-rating{
+  padding:14px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:16px;
+  background:rgba(255,255,255,.045);
+}
+.external-rating strong{
+  display:block;
+  font-size:1.25rem;
+  margin-top:5px;
+}
+.external-rating span{
+  color:var(--muted);
+  font-size:.88rem;
+}
+.external-rating-note{
+  margin:10px 0 0;
+  color:var(--muted);
+  font-size:.84rem;
+  line-height:1.45;
+}
+.press-links{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:12px;
+}
+.press-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:44px;
+  padding:10px 14px;
+  border-radius:14px;
+  text-decoration:none;
+  font-weight:800;
+  color:var(--text);
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+
 .cast-grid{
   display:grid;
   grid-template-columns:repeat(5,minmax(0,1fr));
@@ -1981,6 +2028,71 @@ function bindDetailButtons(){
   });
 }
 
+
+function normaliseRatingSource(source=""){
+  const value=String(source).toLowerCase();
+  if(value.includes("internet movie database"))return "IMDb";
+  if(value.includes("rotten tomatoes"))return "Rotten Tomatoes";
+  if(value.includes("metacritic"))return "Metacritic";
+  return source;
+}
+
+function ratingIcon(source=""){
+  const value=String(source).toLowerCase();
+  if(value.includes("imdb"))return "⭐";
+  if(value.includes("rotten"))return "🍅";
+  if(value.includes("metacritic"))return "🟩";
+  return "🎬";
+}
+
+async function loadExternalRatings(movie){
+  const container=$("#externalRatingsContent");
+  if(!container)return;
+
+  const allocineUrl=`https://www.allocine.fr/rechercher/?q=${encodeURIComponent(movie.title||"")}`;
+
+  if(!movie.imdb_id){
+    container.innerHTML=`
+      <p class="detail-overview">Aucune note externe n’est disponible pour ce film.</p>
+      <div class="press-links">
+        <a class="press-link" href="${allocineUrl}" target="_blank" rel="noopener noreferrer">📰 Rechercher les critiques sur Allociné</a>
+      </div>`;
+    return;
+  }
+
+  try{
+    const res=await fetch(`/api/ratings?imdbId=${encodeURIComponent(movie.imdb_id)}`);
+    const data=await res.json().catch(()=>({}));
+
+    if(!res.ok)throw new Error(data.error||"Notes indisponibles");
+
+    const ratings=Array.isArray(data.ratings)?data.ratings:[];
+    const cards=ratings.map(item=>`
+      <article class="external-rating">
+        <span>${ratingIcon(item.source)} ${escapeHtml(normaliseRatingSource(item.source))}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+      </article>
+    `).join("");
+
+    container.innerHTML=`
+      ${cards?`<div class="external-ratings">${cards}</div>`:
+        `<p class="detail-overview">Aucune note externe n’est disponible pour ce film.</p>`}
+      <div class="press-links">
+        <a class="press-link" href="${allocineUrl}" target="_blank" rel="noopener noreferrer">📰 Voir les critiques sur Allociné</a>
+        <a class="press-link" href="https://www.imdb.com/title/${encodeURIComponent(movie.imdb_id)}/" target="_blank" rel="noopener noreferrer">⭐ Voir sur IMDb</a>
+      </div>
+      <p class="external-rating-note">
+        Les notes proviennent de sources externes lorsqu’elles sont disponibles. CinéHumeur ne copie pas les textes des critiques.
+      </p>`;
+  }catch(error){
+    container.innerHTML=`
+      <p class="detail-overview">Les notes externes ne sont pas encore configurées.</p>
+      <div class="press-links">
+        <a class="press-link" href="${allocineUrl}" target="_blank" rel="noopener noreferrer">📰 Rechercher les critiques sur Allociné</a>
+      </div>`;
+  }
+}
+
 async function openMovieDetail(id){
   const dialog=$("#movieDetailDialog");
   const content=$("#movieDetailContent");
@@ -2066,6 +2178,13 @@ async function openMovieDetail(id){
           <p class="detail-overview">${escapeHtml(movie.overview||"Aucun synopsis disponible en français.")}</p>
         </section>
 
+        <section class="detail-section">
+          <h4>Notes et critiques</h4>
+          <div id="externalRatingsContent">
+            <div class="detail-loading" style="padding:18px 0">Chargement des notes externes…</div>
+          </div>
+        </section>
+
         ${cast.length?`
           <section class="detail-section">
             <h4>Acteurs principaux</h4>
@@ -2107,6 +2226,8 @@ async function openMovieDetail(id){
         <footer>Données et affiches fournies par TMDB. Bande-annonce hébergée par YouTube.</footer>
       </div>
     `;
+
+    loadExternalRatings(movie);
 
     $("#closeMovieDetail").onclick=()=>{
       const frame=$("#trailerFrame");
