@@ -1,9 +1,0 @@
-{
-  "name": "CinéHumeur",
-  "short_name": "CinéHumeur",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#090a0f",
-  "theme_color": "#0b0b10",
-  "icons": []
-}
