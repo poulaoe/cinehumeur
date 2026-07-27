@@ -1451,6 +1451,87 @@ function intentionRule(movie,intention=state.mood){
   return result;
 }
 
+
+function normalizedText(value=""){
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"");
+}
+
+function synopsisSignals(movie){
+  const text=normalizedText(`${movie.title||""} ${movie.overview||""}`);
+
+  const heavyWords=[
+    "meurtre","assassinat","deuil","cancer","maladie","guerre","torture",
+    "violence","vengeance","disparition","kidnapping","suicide","traumatisme",
+    "mort","mourir","funerailles","prison","massacre","terroriste","catastrophe",
+    "murder","death","war","torture","revenge","missing","kidnapping","suicide",
+    "grief","disease","cancer","violence","prison","massacre","terrorist"
+  ];
+
+  const lightWords=[
+    "amitie","famille","vacances","voyage","musique","rencontre","aventure",
+    "comique","humour","leger","reconfortant","fete","mariage","enfants",
+    "friendship","family","holiday","vacation","music","funny","comedy",
+    "lighthearted","feel-good","wedding","children"
+  ];
+
+  return {
+    heavy:heavyWords.filter(word=>text.includes(word)).length,
+    light:lightWords.filter(word=>text.includes(word)).length
+  };
+}
+
+function qualityGate(movie,{strict=false,french=false,hasOrigin=false}={}){
+  const rating=Number(movie.vote_average||0);
+  const votes=Number(movie.vote_count||0);
+  const popularity=Number(movie.popularity||0);
+
+  if(rating<=0||votes<=0)return false;
+
+  // Un film très peu voté doit être excellent pour passer.
+  if(votes<60&&rating<7.35&&!hasOrigin)return false;
+  if(votes<120&&rating<6.95&&!hasOrigin)return false;
+  if(votes<300&&rating<6.55&&!hasOrigin)return false;
+
+  // Seuil général : pas de remplissage avec des films faibles.
+  if(rating<6.2&&!hasOrigin)return false;
+
+  // Le catalogue français n'a pas de passe-droit qualité.
+  if(french){
+    if(votes<80&&rating<7.15&&!hasOrigin)return false;
+    if(votes<180&&rating<6.75&&!hasOrigin)return false;
+    if(rating<6.35&&!hasOrigin)return false;
+  }
+
+  if(strict){
+    if(votes<250&&rating<6.9&&!hasOrigin)return false;
+    if(rating<6.45&&!hasOrigin)return false;
+  }
+
+  // Évite les entrées fantômes ou sans signal réel.
+  if(popularity<0.4&&votes<500&&!hasOrigin)return false;
+
+  return true;
+}
+
+function tonePenalty(movie,intention=state.mood){
+  const signals=synopsisSignals(movie);
+  let penalty=0;
+
+  if(intention==="fun"||intention==="relax"||intention==="family"){
+    penalty+=signals.heavy*13;
+    penalty-=Math.min(signals.light*3,9);
+  }
+
+  if(intention==="couple"){
+    penalty+=signals.heavy*5;
+  }
+
+  return Math.max(-9,penalty);
+}
+
 function candidateScore(m,mode){
   const p=profile();
   let score=0;
@@ -1466,6 +1547,13 @@ function candidateScore(m,mode){
   const intention=intentionRule(m,state.mood);
   if(!intention.allowed)score-=1000;
   score+=intention.bonus;
+  score-=tonePenalty(m,state.mood);
+
+  const rating=Number(m.vote_average||0);
+  const votes=Number(m.vote_count||0);
+  score+=(rating-6)*10;
+  score+=Math.min(Math.log10(votes+1)*4,16);
+
   if(mode==="gems"){
     score+=(m.vote_average||0)*2;
     score-=Math.log10((m.popularity||0)+1)*4;
@@ -1484,13 +1572,13 @@ function candidateScore(m,mode){
   const frenchTaste=frenchAffinity();
 
   if(isFrenchMovie(m)){
-    // Présence française légère par défaut, forte seulement si le profil la confirme.
-    score+=3;
-    score+=Math.max(-10,Math.min(18,frenchTaste*2));
+    // La nationalité apporte de la diversité, jamais un passe-droit qualité.
+    score+=2;
+    score+=Math.max(-8,Math.min(12,frenchTaste*1.5));
 
-    if(mode==="french")score+=42;
+    if(mode==="french")score+=24;
   }else if(mode==="french"){
-    score-=30;
+    score-=40;
   }
 
 const brief=state.aiBrief||{};
@@ -1777,10 +1865,10 @@ async function ensureFrenchPool(){
   if(existingFrench>=50&&state.frenchPoolLoaded)return;
 
   const requests=[
-    {page:1,originalLanguage:"fr",sortBy:"vote_average.desc",minVotes:250,minRating:6.2},
-    {page:2,originalLanguage:"fr",sortBy:"vote_average.desc",minVotes:120,minRating:6.0},
-    {page:1,originalLanguage:"fr",sortBy:"popularity.desc",minVotes:80,minRating:5.8},
-    {page:2,originalLanguage:"fr",sortBy:"popularity.desc",minVotes:50,minRating:5.6}
+    {page:1,originalLanguage:"fr",sortBy:"vote_average.desc",minVotes:300,minRating:6.5},
+    {page:2,originalLanguage:"fr",sortBy:"vote_average.desc",minVotes:180,minRating:6.4},
+    {page:3,originalLanguage:"fr",sortBy:"vote_average.desc",minVotes:100,minRating:6.5},
+    {page:1,originalLanguage:"fr",sortBy:"popularity.desc",minVotes:220,minRating:6.35}
   ];
 
   const settled=await Promise.allSettled(
@@ -1860,15 +1948,22 @@ async function recommend(){
       const votes=Number(movie.vote_count||0);
       const rating=Number(movie.vote_average||0);
 
-      // On écarte les titres trop peu documentés, sauf vraie proximité TMDB.
-      if(!hasOrigin&&(votes<120||rating<6.0))return false;
+      const strictMood=["fun","relax","family"].includes(state.mood);
+
+      if(!qualityGate(movie,{
+        strict:strictMood,
+        french:isFrenchMovie(movie),
+        hasOrigin
+      }))return false;
+
+      if(tonePenalty(movie,state.mood)>=26)return false;
 
       if(state.mode==="close"){
-        return hasOrigin||(votes>=300&&rating>=6.4);
+        return hasOrigin||qualityGate(movie,{strict:true,french:isFrenchMovie(movie),hasOrigin});
       }
 
       if(state.mode==="french"){
-        return isFrenchMovie(movie)&&(hasOrigin||(votes>=80&&rating>=5.9));
+        return isFrenchMovie(movie)&&qualityGate(movie,{strict:true,french:true,hasOrigin});
       }
 
       return true;
@@ -1911,7 +2006,8 @@ async function recommend(){
       const bestScore=scoredMovies[0]?.score||0;
       const frenchCandidate=scoredMovies.find(item=>
         isFrenchMovie(item.movie)&&
-        item.score>=bestScore*0.72
+        qualityGate(item.movie,{strict:true,french:true,hasOrigin:(state.recommendationOrigins?.[String(item.movie.id)]||[]).length>0})&&
+        item.score>=bestScore*0.84
       );
 
       if(frenchCandidate)addChoice(frenchCandidate.movie);
@@ -1926,7 +2022,7 @@ async function recommend(){
   state.recent=[...state.recent,...choices.map(m=>String(m.id))].slice(-30);
   save();
   const intentionNotice=choices.length<3&&state.mood
-    ?" · Peu de films correspondent strictement : aucun genre opposé n’a été ajouté."
+    ?" · Je préfère afficher moins de films plutôt que des propositions faibles ou hors sujet."
     :"";
   $("#moodSummary").textContent=`Objectif : ${moodLabel()}${state.aiBrief?.summary ? " · "+state.aiBrief.summary : ""}${intentionNotice}`;
   $("#recommendGrid").innerHTML=choices.map((m,index)=>{
