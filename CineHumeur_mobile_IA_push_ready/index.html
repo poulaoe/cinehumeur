@@ -700,6 +700,27 @@
   50%{transform:translateY(-50%) translateX(-5px);opacity:1}
 }
 
+
+.platform-filter{margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08)}
+.platform-filter-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.platform-filter-title strong{font-size:1rem}
+.platform-filter-title span{color:var(--muted);font-size:.82rem}
+.platform-chips{display:flex;flex-wrap:wrap;gap:9px}
+.platform-chip{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--muted);border-radius:999px;padding:10px 13px;font-weight:800;cursor:pointer}
+.platform-chip.active{color:var(--text);border-color:rgba(109,226,188,.7);background:rgba(41,188,145,.15)}
+.watch-section{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}
+.watch-title{font-size:.84rem;font-weight:900;margin-bottom:8px}
+.watch-provider-row{display:flex;flex-wrap:wrap;gap:8px}
+.watch-provider{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.1);font-size:.8rem;font-weight:800}
+.watch-provider img{width:22px;height:22px;border-radius:6px;object-fit:cover}
+.watch-empty{color:var(--muted);font-size:.82rem}
+.watch-note{color:var(--muted);font-size:.75rem;margin-top:7px}
+@media(max-width:700px){
+  .platform-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px;scrollbar-width:none}
+  .platform-chips::-webkit-scrollbar{display:none}
+  .platform-chip{flex:0 0 auto}
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -815,6 +836,13 @@
             <button class="choice-btn" data-mood="surprise">🎲 Surprends-moi<small>Sortir de mes habitudes</small></button>
           </div>
           <div class="genre-cloud" id="genreChoices"></div>
+          <div class="platform-filter">
+            <div class="platform-filter-title">
+              <strong>📺 Où veux-tu regarder ?</strong>
+              <span>France</span>
+            </div>
+            <div class="platform-chips" id="platformChoices"></div>
+          </div>
         </section>
 
         <div class="modes" id="modeButtons">
@@ -931,6 +959,7 @@ const defaultState={
   source:"fallback",
   mood:"",
   selectedGenres:[],
+  selectedProviders:[],
   aiPrompt:"",
   aiBrief:null,
   recommendationOrigins:{},
@@ -954,7 +983,7 @@ let authMode="login";
 const LOCAL_KEY="cinehumeur-v3";
 
 function normalizeState(data){
-  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[],recommendationOrigins:data?.recommendationOrigins||{},expandedTasteIds:data?.expandedTasteIds||[],frenchPoolLoaded:Boolean(data?.frenchPoolLoaded),personalizedSignature:data?.personalizedSignature||""};
+  return {...defaultState,...(data||{}),ratings:data?.ratings||{},catalog:data?.catalog||[],recent:data?.recent||[],selectedGenres:data?.selectedGenres||[],selectedProviders:data?.selectedProviders||[],recommendationOrigins:data?.recommendationOrigins||{},expandedTasteIds:data?.expandedTasteIds||[],frenchPoolLoaded:Boolean(data?.frenchPoolLoaded),personalizedSignature:data?.personalizedSignature||""};
 }
 function save(){
   localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
@@ -2373,18 +2402,17 @@ async function recommend(){
   }
 
   $("#recommendGrid").innerHTML=choices.map((m,index)=>{
-    const confidence=recommendationConfidence(m);
-    const compat=Math.max(64,Math.min(96,confidence));
-    return `<article class="rec-card">
+    return `<article class="rec-card" data-movie-id="${m.id}">
       <div class="poster">
         ${posterUrl(m)?`<img src="${posterUrl(m)}" alt="Affiche de ${escapeHtml(m.title)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">`:""}
         <div class="poster-fallback" style="${posterUrl(m)?"display:none":""}">🎬</div>
       </div>
       <div class="rec-body">
-        <span class="rec-label">${recRole(index)}</span><span class="score">${compat}% compatible</span>
+        <span class="rec-label">${recRole(index)}</span>
         <h3 style="margin:12px 0 6px">${escapeHtml(m.title)}</h3>
         <div class="movie-meta">${yearOf(m)} · ${genreNames(m).slice(0,3).join(" / ")}${isFrenchMovie(m)?" · 🇫🇷 Film français":""}</div>
         <p class="reason">${escapeHtml((m.overview||"Synopsis indisponible.").trim())}</p>
+        <div class="watch-section"><div class="watch-empty">Recherche des disponibilités en France…</div></div>
         <div class="rec-actions" style="grid-template-columns:repeat(2,1fr)">
           <button class="secondary recRate" data-id="${m.id}" data-rate="love">❤️ J’ai adoré</button>
           <button class="secondary recRate" data-id="${m.id}" data-rate="like">👍 J’ai aimé</button>
@@ -2396,6 +2424,8 @@ async function recommend(){
     </article>`;
   }).join("");
   setupRecommendationCarousel();
+  hydrateWatchSections();
+  applyProviderFilter();
   document.querySelectorAll(".recRate").forEach(btn=>btn.onclick=()=>{
     state.ratings[btn.dataset.id]=btn.dataset.rate;
     const card=btn.closest(".rec-card");
@@ -2703,7 +2733,127 @@ function updateStats(){
   $("#catalogStat").textContent=new Set([...state.catalog,...fallbackMovies].map(m=>m.id)).size;
   $("#sourceStat").textContent=state.source==="tmdb"?"TMDB sécurisé":"Secours local";
 }
+
+const WATCH_PROVIDERS_FR=[
+  {id:8,label:"Netflix"},
+  {id:119,label:"Prime Video"},
+  {id:337,label:"Disney+"},
+  {id:381,label:"Canal+"},
+  {id:1899,label:"Max"},
+  {id:350,label:"Apple TV+"},
+  {id:11,label:"MUBI"},
+  {id:234,label:"Arte"}
+];
+
+const providerCache=new Map();
+
+async function getFrenchWatchProviders(movieId){
+  if(providerCache.has(String(movieId)))return providerCache.get(String(movieId));
+  try{
+    const res=await fetch(`/api/watch-providers?id=${encodeURIComponent(movieId)}`);
+    if(!res.ok)throw new Error("Indisponible");
+    const data=await res.json();
+    providerCache.set(String(movieId),data);
+    return data;
+  }catch{
+    const empty={flatrate:[],free:[],ads:[],rent:[],buy:[],link:""};
+    providerCache.set(String(movieId),empty);
+    return empty;
+  }
+}
+
+function renderPlatformChoices(){
+  const container=$("#platformChoices");
+  if(!container)return;
+  const selected=new Set((state.selectedProviders||[]).map(Number));
+  const items=[{id:0,label:"Toutes"},...WATCH_PROVIDERS_FR];
+
+  container.innerHTML=items.map(item=>`
+    <button type="button" class="platform-chip ${
+      item.id===0?(selected.size===0?"active":""):(selected.has(item.id)?"active":"")
+    }" data-provider="${item.id}">${item.label}</button>
+  `).join("");
+
+  container.querySelectorAll("[data-provider]").forEach(btn=>btn.onclick=()=>{
+    const id=Number(btn.dataset.provider);
+    if(id===0){
+      state.selectedProviders=[];
+    }else{
+      const set=new Set((state.selectedProviders||[]).map(Number));
+      set.has(id)?set.delete(id):set.add(id);
+      state.selectedProviders=[...set].slice(0,4);
+    }
+    save();
+    renderPlatformChoices();
+    recommend();
+  });
+}
+
+function watchProviderIds(data){
+  return [...(data.flatrate||[]),...(data.free||[]),...(data.ads||[])]
+    .map(item=>Number(item.provider_id));
+}
+
+function renderWatchGroup(items,title){
+  if(!items?.length)return "";
+  return `
+    <div class="watch-title">${title}</div>
+    <div class="watch-provider-row">
+      ${items.slice(0,5).map(item=>`
+        <span class="watch-provider">
+          ${item.logo_path?`<img src="https://image.tmdb.org/t/p/w92${item.logo_path}" alt="">`:""}
+          ${escapeHtml(item.provider_name||"Plateforme")}
+        </span>
+      `).join("")}
+    </div>`;
+}
+
+async function hydrateWatchSections(){
+  const cards=[...document.querySelectorAll(".rec-card[data-movie-id]")];
+  await Promise.all(cards.map(async card=>{
+    const target=card.querySelector(".watch-section");
+    if(!target)return;
+    const data=await getFrenchWatchProviders(card.dataset.movieId);
+    const html=[
+      renderWatchGroup([...(data.flatrate||[]),...(data.free||[]),...(data.ads||[])],"Inclus dans un abonnement"),
+      renderWatchGroup(data.rent||[],"Location"),
+      renderWatchGroup(data.buy||[],"Achat")
+    ].filter(Boolean).join("");
+
+    target.innerHTML=html||'<div class="watch-empty">Disponibilité non renseignée pour la France.</div>';
+    if(html){
+      target.insertAdjacentHTML("beforeend",'<div class="watch-note">Disponibilités indicatives pour la France.</div>');
+    }
+  }));
+}
+
+async function applyProviderFilter(){
+  const selected=new Set((state.selectedProviders||[]).map(Number));
+  if(!selected.size)return;
+
+  const cards=[...document.querySelectorAll(".rec-card[data-movie-id]")];
+  const checks=await Promise.all(cards.map(async card=>{
+    const data=await getFrenchWatchProviders(card.dataset.movieId);
+    const ids=watchProviderIds(data);
+    return {card,matches:ids.some(id=>selected.has(id))};
+  }));
+
+  checks.forEach(({card,matches})=>card.style.display=matches?"":"none");
+
+  if(!checks.some(item=>item.matches)){
+    checks.forEach(({card})=>card.style.display="");
+    const grid=$("#recommendGrid");
+    if(grid&&!grid.querySelector(".provider-fallback-note")){
+      const note=document.createElement("div");
+      note.className="notice provider-fallback-note";
+      note.textContent="Aucun des trois films n’est disponible sur les plateformes choisies en France. J’affiche les meilleures alternatives.";
+      grid.prepend(note);
+    }
+  }
+}
+
 function renderPreferences(){
+  renderPlatformChoices();
   document.querySelectorAll("[data-mood]").forEach(b=>b.classList.toggle("active",b.dataset.mood===state.mood));
 
   const contextualGenres={
