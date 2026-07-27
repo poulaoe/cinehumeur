@@ -721,6 +721,71 @@
   .platform-chip{flex:0 0 auto}
 }
 
+
+.detail-watch{
+  margin-top:18px;
+  padding:16px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:18px;
+  background:rgba(255,255,255,.035);
+}
+.detail-watch-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+.detail-watch-head h4{margin:0}
+.detail-watch-head span{font-size:.78rem;color:var(--muted)}
+.detail-watch-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.detail-watch-link,
+.detail-watch-more{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:38px;
+  padding:7px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.055);
+  color:var(--text);
+  text-decoration:none;
+  font-size:.8rem;
+  font-weight:850;
+  cursor:pointer;
+}
+.detail-watch-link img{
+  width:24px;
+  height:24px;
+  border-radius:7px;
+  object-fit:cover;
+}
+.detail-watch-more{
+  background:rgba(129,92,246,.16);
+  border-color:rgba(129,92,246,.4);
+}
+.detail-watch-extra{display:none}
+.detail-watch-extra.open{display:flex}
+.detail-watch-kinds{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:10px;
+  color:var(--muted);
+  font-size:.75rem;
+}
+.detail-watch-note{
+  margin-top:10px;
+  color:var(--muted);
+  font-size:.72rem;
+  line-height:1.45;
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -2412,7 +2477,6 @@ async function recommend(){
         <h3 style="margin:12px 0 6px">${escapeHtml(m.title)}</h3>
         <div class="movie-meta">${yearOf(m)} · ${genreNames(m).slice(0,3).join(" / ")}${isFrenchMovie(m)?" · 🇫🇷 Film français":""}</div>
         <p class="reason">${escapeHtml((m.overview||"Synopsis indisponible.").trim())}</p>
-        <div class="watch-section"><div class="watch-empty">Recherche des disponibilités en France…</div></div>
         <div class="rec-actions" style="grid-template-columns:repeat(2,1fr)">
           <button class="secondary recRate" data-id="${m.id}" data-rate="love">❤️ J’ai adoré</button>
           <button class="secondary recRate" data-id="${m.id}" data-rate="like">👍 J’ai aimé</button>
@@ -2424,8 +2488,6 @@ async function recommend(){
     </article>`;
   }).join("");
   setupRecommendationCarousel();
-  hydrateWatchSections();
-  applyProviderFilter();
   document.querySelectorAll(".recRate").forEach(btn=>btn.onclick=()=>{
     state.ratings[btn.dataset.id]=btn.dataset.rate;
     const card=btn.closest(".rec-card");
@@ -2542,6 +2604,84 @@ async function loadExternalRatings(movie){
   }
 }
 
+
+function uniqueWatchProviders(data){
+  const groups=[
+    ...(data.flatrate||[]).map(item=>({...item,watch_type:"Abonnement"})),
+    ...(data.free||[]).map(item=>({...item,watch_type:"Gratuit"})),
+    ...(data.ads||[]).map(item=>({...item,watch_type:"Avec publicité"})),
+    ...(data.rent||[]).map(item=>({...item,watch_type:"Location"})),
+    ...(data.buy||[]).map(item=>({...item,watch_type:"Achat"}))
+  ];
+
+  const seen=new Set();
+  return groups.filter(item=>{
+    const key=String(item.provider_id);
+    if(seen.has(key))return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function detailWatchHtml(data){
+  const providers=uniqueWatchProviders(data);
+  if(!providers.length){
+    return `
+      <section class="detail-watch">
+        <div class="detail-watch-head">
+          <h4>📺 Où regarder en France ?</h4>
+          <span>France</span>
+        </div>
+        <div class="watch-empty">Aucune disponibilité renseignée actuellement.</div>
+      </section>`;
+  }
+
+  const visible=providers.slice(0,3);
+  const extra=providers.slice(3);
+  const target=data.link||"#";
+
+  const providerButton=item=>`
+    <a class="detail-watch-link"
+       href="${escapeHtml(target)}"
+       target="_blank"
+       rel="noopener noreferrer"
+       title="${escapeHtml(item.watch_type||"Voir les offres")}">
+      ${item.logo_path?`<img src="https://image.tmdb.org/t/p/w92${item.logo_path}" alt="">`:""}
+      ${escapeHtml(item.provider_name||"Plateforme")}
+    </a>`;
+
+  const kinds=[...new Set(providers.map(item=>item.watch_type).filter(Boolean))];
+
+  return `
+    <section class="detail-watch">
+      <div class="detail-watch-head">
+        <h4>📺 Où regarder en France ?</h4>
+        <span>Disponibilités actuelles</span>
+      </div>
+
+      <div class="detail-watch-list">
+        ${visible.map(providerButton).join("")}
+        ${extra.length?`
+          <button class="detail-watch-more" id="showMoreProviders" type="button">+${extra.length}</button>
+        `:""}
+      </div>
+
+      ${extra.length?`
+        <div class="detail-watch-list detail-watch-extra" id="extraProviders">
+          ${extra.map(providerButton).join("")}
+        </div>
+      `:""}
+
+      <div class="detail-watch-kinds">
+        ${kinds.map(kind=>`<span>${escapeHtml(kind)}</span>`).join(" · ")}
+      </div>
+
+      <div class="detail-watch-note">
+        Les boutons ouvrent la page de disponibilité du film pour la France.
+      </div>
+    </section>`;
+}
+
 async function openMovieDetail(id){
   const dialog=$("#movieDetailDialog");
   const content=$("#movieDetailContent");
@@ -2557,6 +2697,7 @@ async function openMovieDetail(id){
     }
 
     const movie=await res.json();
+    const watchData=await getFrenchWatchProviders(movie.id);
     const trailer=pickTrailer(movie.videos?.results||[]);
     const director=(movie.credits?.crew||[]).find(person=>person.job==="Director");
     const cast=(movie.credits?.cast||[]).slice(0,5);
@@ -2622,6 +2763,8 @@ async function openMovieDetail(id){
             </div>
           </div>`:""}
 
+        ${detailWatchHtml(watchData)}
+
         <section class="detail-section">
           <h4>Synopsis</h4>
           <p class="detail-overview">${escapeHtml(movie.overview||"Aucun synopsis disponible en français.")}</p>
@@ -2677,6 +2820,16 @@ async function openMovieDetail(id){
     `;
 
     loadExternalRatings(movie);
+
+    const moreProviders=$("#showMoreProviders");
+    if(moreProviders){
+      moreProviders.onclick=()=>{
+        const extra=$("#extraProviders");
+        const opening=!extra.classList.contains("open");
+        extra.classList.toggle("open",opening);
+        moreProviders.textContent=opening?"Réduire":`+${extra.children.length}`;
+      };
+    }
 
     $("#closeMovieDetail").onclick=()=>{
       const frame=$("#trailerFrame");
