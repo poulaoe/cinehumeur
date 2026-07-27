@@ -1097,7 +1097,7 @@ async function mergeCloudProfile(){
   if(error){$("#syncState").textContent="Erreur de synchronisation";return;}
   if(data?.app_state){
     const cloud=normalizeState(data.app_state);
-    const mergedRatings={...state.ratings,...cloud.ratings};
+    const mergedRatings={...cloud.ratings,...state.ratings};
     const catalogMap=new Map([...state.catalog,...cloud.catalog].map(m=>[String(m.id),m]));
     state=normalizeState({...cloud,...state,ratings:mergedRatings,catalog:[...catalogMap.values()],recent:[...new Set([...cloud.recent,...state.recent])].slice(-30)});
     localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
@@ -1152,6 +1152,12 @@ function normalizedMovie(m){
 function usefulCount(){
   return Object.values(state.ratings).filter(r=>["love","like","neutral","dislike"].includes(r)).length;
 }
+
+function hasUserRated(movieId){
+  const rating=state.ratings?.[String(movieId)]||state.ratings?.[movieId];
+  return ["love","like","neutral","dislike"].includes(rating);
+}
+
 function ratingCounts(){
   const vals=Object.values(state.ratings);
   return {
@@ -2319,6 +2325,7 @@ async function recommend(){
     .map(movie=>({movie,score:candidateScore(movie,state.mode)}))
     .filter(item=>{
       if(item.score<=-1000)return false;
+      if(hasUserRated(item.movie.id))return false;
 
       const movie=item.movie;
       const intention=intentionRule(movie,state.mood);
@@ -2361,7 +2368,8 @@ async function recommend(){
   }
 
   function addChoice(movie,options={}){
-    if(!movie||choices.some(choice=>String(choice.id)===String(movie.id)))return false;
+    if(!movie||hasUserRated(movie.id))return false;
+    if(choices.some(choice=>String(choice.id)===String(movie.id)))return false;
     if(!canAdd(movie,options))return false;
     const mainGenre=(movie.genre_ids||[])[0]||"unknown";
     choices.push(movie);
@@ -2441,6 +2449,7 @@ async function recommend(){
   // Fallback 3 : ne jamais laisser la zone vide.
   if(choices.length===0){
     const lastResort=unique
+      .filter(movie=>!hasUserRated(movie.id))
       .filter(movie=>intentionRule(movie,state.mood).allowed)
       .filter(movie=>Number(movie.vote_average||0)>=6.2)
       .filter(movie=>Number(movie.vote_count||0)>=80)
@@ -2458,8 +2467,8 @@ async function recommend(){
   if(!choices.length){
     $("#recommendGrid").innerHTML=`
       <div class="notice" style="grid-column:1/-1">
-        Aucun film assez fiable n’a été trouvé avec ces critères.
-        Essaie une autre envie ou retire une précision.
+        Aucun nouveau film assez fiable n’a été trouvé avec ces critères.
+        Les films déjà évalués sont maintenant exclus. Essaie une autre envie ou un autre mode.
       </div>`;
     setupRecommendationCarousel();
     updateStats();
@@ -2488,8 +2497,17 @@ async function recommend(){
     </article>`;
   }).join("");
   setupRecommendationCarousel();
-  document.querySelectorAll(".recRate").forEach(btn=>btn.onclick=()=>{
-    state.ratings[btn.dataset.id]=btn.dataset.rate;
+  document.querySelectorAll(".recRate").forEach(btn=>btn.onclick=async()=>{
+    const movieId=String(btn.dataset.id);
+    state.ratings[movieId]=btn.dataset.rate;
+    save();
+
+    // Si le compte est connecté, on synchronise sans attendre le délai normal.
+    if(currentUser&&supabaseClient){
+      clearTimeout(syncTimer);
+      await syncCloud();
+    }
+
     const card=btn.closest(".rec-card");
     if(card){
       const label=btn.dataset.rate==="love"?"Tu as adoré ce film."
@@ -2498,7 +2516,6 @@ async function recommend(){
         :"Tu n’as pas aimé ce film.";
       card.querySelector(".reason").textContent=label+" Les prochaines propositions sont recalculées.";
     }
-    save();
     updateStats();
     setTimeout(recommend,350);
   });
