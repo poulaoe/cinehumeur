@@ -1726,10 +1726,10 @@ function passesEliteRecommendation(movie){
   const rating=Number(movie.vote_average||0);
   const votes=Number(movie.vote_count||0);
 
-  if(confidence<62)return false;
+  if(confidence<58)return false;
   if(votes<100&&rating<7.25)return false;
   if(votes<250&&rating<6.8)return false;
-  if(isFrenchMovie(movie)&&confidence<66)return false;
+  if(isFrenchMovie(movie)&&confidence<61)return false;
   return true;
 }
 
@@ -2259,15 +2259,16 @@ async function recommend(){
   const choices=[];
   const genreCounts=new Map();
 
-  function canAdd(movie){
+  function canAdd(movie,{allowRecent=false,allowSameGenre=false}={}){
     const mainGenre=(movie.genre_ids||[])[0]||"unknown";
     const alreadyRecent=(state.recent||[]).slice(-18).includes(String(movie.id));
-    return (genreCounts.get(mainGenre)||0)<2&&!alreadyRecent;
+    const genreOk=allowSameGenre||(genreCounts.get(mainGenre)||0)<2;
+    return genreOk&&(allowRecent||!alreadyRecent);
   }
 
-  function addChoice(movie){
+  function addChoice(movie,options={}){
     if(!movie||choices.some(choice=>String(choice.id)===String(movie.id)))return false;
-    if(!canAdd(movie))return false;
+    if(!canAdd(movie,options))return false;
     const mainGenre=(movie.genre_ids||[])[0]||"unknown";
     choices.push(movie);
     genreCounts.set(mainGenre,(genreCounts.get(mainGenre)||0)+1);
@@ -2317,10 +2318,42 @@ async function recommend(){
     })[0];
   if(discovery)addChoice(discovery.movie);
 
-  // Complément uniquement avec des films passant encore le seuil fort.
+  // Complément avec des films passant encore le seuil fort.
   for(const item of eligible){
     if(recommendationConfidence(item.movie)>=64)addChoice(item.movie);
     if(choices.length===3)break;
+  }
+
+  // Fallback 1 : on autorise des films déjà vus récemment, mais toujours de bonne qualité.
+  if(choices.length<3){
+    for(const item of eligible){
+      if(recommendationConfidence(item.movie)>=60){
+        addChoice(item.movie,{allowRecent:true});
+      }
+      if(choices.length===3)break;
+    }
+  }
+
+  // Fallback 2 : on assouplit légèrement la diversité de genres, jamais la pertinence.
+  if(choices.length<3){
+    for(const item of scoredMovies){
+      if(recommendationConfidence(item.movie)>=58){
+        addChoice(item.movie,{allowRecent:true,allowSameGenre:true});
+      }
+      if(choices.length===3)break;
+    }
+  }
+
+  // Fallback 3 : ne jamais laisser la zone vide.
+  if(choices.length===0){
+    const lastResort=unique
+      .filter(movie=>intentionRule(movie,state.mood).allowed)
+      .filter(movie=>Number(movie.vote_average||0)>=6.2)
+      .filter(movie=>Number(movie.vote_count||0)>=80)
+      .sort((a,b)=>candidateScore(b,state.mode)-candidateScore(a,state.mode))
+      .slice(0,3);
+
+    lastResort.forEach(movie=>addChoice(movie,{allowRecent:true,allowSameGenre:true}));
   }
 
   state.recent=[...state.recent,...choices.map(m=>String(m.id))].slice(-30);
@@ -2328,6 +2361,17 @@ async function recommend(){
   const intentionNotice=choices.length<3&&state.mood
     ?" · Je préfère afficher moins de films plutôt que des propositions faibles ou hors sujet."
     :"";
+  if(!choices.length){
+    $("#recommendGrid").innerHTML=`
+      <div class="notice" style="grid-column:1/-1">
+        Aucun film assez fiable n’a été trouvé avec ces critères.
+        Essaie une autre envie ou retire une précision.
+      </div>`;
+    setupRecommendationCarousel();
+    updateStats();
+    return;
+  }
+
   $("#recommendGrid").innerHTML=choices.map((m,index)=>{
     const confidence=recommendationConfidence(m);
     const compat=Math.max(64,Math.min(96,confidence));
