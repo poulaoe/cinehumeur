@@ -2059,7 +2059,7 @@ async function recommend(){
         <span class="rec-label">${recRole(index)}</span><span class="score">${compat}% compatible</span>
         <h3 style="margin:12px 0 6px">${escapeHtml(m.title)}</h3>
         <div class="movie-meta">${yearOf(m)} · ${genreNames(m).slice(0,3).join(" / ")}${isFrenchMovie(m)?" · 🇫🇷 Film français":""}</div>
-        <p class="reason movie-synopsis-preview">${reasonFor(m)}</p>
+        <p class="reason movie-synopsis-preview">${escapeHtml((m.overview||"Synopsis indisponible.").trim())}</p>
         <div class="rec-actions" style="grid-template-columns:repeat(2,1fr)">
           <button class="secondary recRate" data-id="${m.id}" data-rate="love">❤️ J’ai adoré</button>
           <button class="secondary recRate" data-id="${m.id}" data-rate="like">👍 J’ai aimé</button>
