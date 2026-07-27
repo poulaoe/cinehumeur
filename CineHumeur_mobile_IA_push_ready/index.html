@@ -622,6 +622,84 @@
   .carousel-dots{display:flex}
 }
 
+
+.reason{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:5;
+  overflow:hidden;
+}
+@media(max-width:700px){
+  .reason{
+    -webkit-line-clamp:4;
+    min-height:0;
+  }
+}
+
+
+/* Indication de défilement plus évidente */
+.carousel-mobile-head{position:relative}
+.carousel-mobile-head span::after{
+  content:"  →";
+  display:inline-block;
+  animation:swipeArrow 1.15s ease-in-out infinite;
+}
+.recommend-grid{
+  position:relative;
+}
+.recommend-grid.carousel-nudge{
+  animation:carouselNudge 1.25s cubic-bezier(.22,.75,.28,1);
+}
+.carousel-edge-cue{
+  display:none;
+}
+@keyframes swipeArrow{
+  0%,100%{transform:translateX(0);opacity:.55}
+  50%{transform:translateX(8px);opacity:1}
+}
+@keyframes carouselNudge{
+  0%{transform:translateX(0)}
+  35%{transform:translateX(-32px)}
+  65%{transform:translateX(8px)}
+  100%{transform:translateX(0)}
+}
+@media(max-width:700px){
+  .carousel-mobile-head span{
+    max-width:62%;
+    line-height:1.25;
+  }
+  .carousel-arrow:not(:disabled){
+    animation:arrowPulse 1.6s ease-in-out infinite;
+  }
+  .carousel-edge-cue{
+    display:flex;
+    position:absolute;
+    right:6px;
+    top:50%;
+    z-index:8;
+    width:46px;
+    height:72px;
+    transform:translateY(-50%);
+    align-items:center;
+    justify-content:center;
+    border-radius:22px 0 0 22px;
+    color:white;
+    font-size:2rem;
+    font-weight:900;
+    pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(119,82,255,.9));
+    animation:edgeCue 1.25s ease-in-out infinite;
+  }
+}
+@keyframes arrowPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(148,100,255,.12)}
+  50%{box-shadow:0 0 0 9px rgba(148,100,255,.14)}
+}
+@keyframes edgeCue{
+  0%,100%{transform:translateY(-50%) translateX(3px);opacity:.55}
+  50%{transform:translateY(-50%) translateX(-5px);opacity:1}
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -755,7 +833,7 @@
             <button class="carousel-arrow" id="carouselNext" type="button" aria-label="Film suivant">›</button>
           </div>
         </div>
-        <div class="recommend-grid" id="recommendGrid"></div>
+        <div style="position:relative"><div class="recommend-grid" id="recommendGrid"></div><div class="carousel-edge-cue" id="carouselEdgeCue" aria-hidden="true">›</div></div>
         <div class="carousel-dots" id="carouselDots" aria-label="Navigation du carrousel"></div>
         <div class="row" style="margin-top:18px">
           <button class="primary" id="refreshBtn">Proposer 3 autres films</button>
@@ -1618,6 +1696,43 @@ function tonePenalty(movie,intention=state.mood){
   return Math.max(-9,penalty);
 }
 
+
+function recommendationConfidence(movie){
+  const rating=Number(movie.vote_average||0);
+  const votes=Number(movie.vote_count||0);
+  const intention=intentionRule(movie,state.mood);
+  const selected=new Set(state.selectedGenres||[]);
+  const matched=(movie.genre_ids||[]).filter(id=>selected.has(id)).length;
+  const tone=Math.max(0,tonePenalty(movie,state.mood));
+
+  let confidence=0;
+  confidence+=Math.max(0,Math.min(32,(rating-5.8)*15));
+  confidence+=Math.max(0,Math.min(22,Math.log10(votes+1)*6-8));
+  confidence+=intention.allowed?22:0;
+  confidence+=Math.min(12,intention.bonus/3);
+  confidence+=Math.min(10,matched*5);
+  confidence-=tone*.9;
+
+  const dislikedGenreWeights=profile().genres||{};
+  const negativeOverlap=(movie.genre_ids||[])
+    .reduce((sum,id)=>sum+Math.min(0,Number(dislikedGenreWeights[id]||0)),0);
+  confidence+=Math.max(-18,negativeOverlap*2.5);
+
+  return Math.max(0,Math.min(100,Math.round(confidence)));
+}
+
+function passesEliteRecommendation(movie){
+  const confidence=recommendationConfidence(movie);
+  const rating=Number(movie.vote_average||0);
+  const votes=Number(movie.vote_count||0);
+
+  if(confidence<62)return false;
+  if(votes<100&&rating<7.25)return false;
+  if(votes<250&&rating<6.8)return false;
+  if(isFrenchMovie(movie)&&confidence<66)return false;
+  return true;
+}
+
 function candidateScore(m,mode){
   const p=profile();
   let score=0;
@@ -2053,6 +2168,8 @@ function setupRecommendationCarousel(){
     [...dots.children].forEach((dot,i)=>dot.classList.toggle("active",i===index));
     prev.disabled=index===0;
     next.disabled=index===cards.length-1;
+    const edge=$("#carouselEdgeCue");
+    if(edge)edge.style.opacity=index===cards.length-1?"0":"1";
   };
 
   prev.onclick=()=>{
@@ -2072,13 +2189,25 @@ function setupRecommendationCarousel(){
 
   update();
 
-  // Démonstration légère une seule fois sur mobile.
-  if(window.innerWidth<=700&&!sessionStorage.getItem("cinehumeurSwipeShown")){
-    sessionStorage.setItem("cinehumeurSwipeShown","1");
+  track.scrollLeft=0;
+
+  if(window.innerWidth<=700&&!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+    let userTouched=false;
+    const stop=()=>{userTouched=true};
+    track.addEventListener("touchstart",stop,{once:true,passive:true});
+    track.addEventListener("pointerdown",stop,{once:true,passive:true});
+
     setTimeout(()=>{
-      track.scrollTo({left:45,behavior:"smooth"});
-      setTimeout(()=>track.scrollTo({left:0,behavior:"smooth"}),650);
-    },450);
+      if(userTouched)return;
+      track.classList.remove("carousel-nudge");
+      void track.offsetWidth;
+      track.classList.add("carousel-nudge");
+      track.scrollTo({left:76,behavior:"smooth"});
+      setTimeout(()=>{
+        if(!userTouched)track.scrollTo({left:0,behavior:"smooth"});
+      },700);
+      setTimeout(()=>track.classList.remove("carousel-nudge"),1400);
+    },650);
   }
 }
 
@@ -2113,6 +2242,7 @@ async function recommend(){
       }))return false;
 
       if(tonePenalty(movie,state.mood)>=26)return false;
+      if(!passesEliteRecommendation(movie))return false;
 
       if(state.mode==="close"){
         return hasOrigin||qualityGate(movie,{strict:true,french:isFrenchMovie(movie),hasOrigin});
@@ -2131,60 +2261,76 @@ async function recommend(){
 
   function canAdd(movie){
     const mainGenre=(movie.genre_ids||[])[0]||"unknown";
-    return (genreCounts.get(mainGenre)||0)<2;
+    const alreadyRecent=(state.recent||[]).slice(-18).includes(String(movie.id));
+    return (genreCounts.get(mainGenre)||0)<2&&!alreadyRecent;
   }
 
   function addChoice(movie){
     if(!movie||choices.some(choice=>String(choice.id)===String(movie.id)))return false;
     if(!canAdd(movie))return false;
-
     const mainGenre=(movie.genre_ids||[])[0]||"unknown";
     choices.push(movie);
     genreCounts.set(mainGenre,(genreCounts.get(mainGenre)||0)+1);
     return true;
   }
 
-  // En mode français : trois films français.
-  if(state.mode==="french"){
-    for(const item of scoredMovies){
-      if(isFrenchMovie(item.movie))addChoice(item.movie);
-      if(choices.length===3)break;
-    }
-  }else{
-    // Choix principal et deuxième proposition selon le classement général.
-    for(const item of scoredMovies){
-      addChoice(item.movie);
-      if(choices.length===2)break;
-    }
+  const eligible=state.mode==="french"
+    ?scoredMovies.filter(item=>isFrenchMovie(item.movie))
+    :scoredMovies;
 
-    // En mode proche, inclure un bon film français lorsque son score reste crédible.
-    if(state.mode==="close"){
-      const bestScore=scoredMovies[0]?.score||0;
-      const frenchCandidate=scoredMovies.find(item=>
-        isFrenchMovie(item.movie)&&
-        qualityGate(item.movie,{strict:true,french:true,hasOrigin:(state.recommendationOrigins?.[String(item.movie.id)]||[]).length>0})&&
-        item.score>=bestScore*0.84
-      );
+  // 1. Choix sûr : meilleure combinaison pertinence + qualité + confiance.
+  const safe=eligible.find(item=>recommendationConfidence(item.movie)>=72)
+    ||eligible[0];
+  if(safe)addChoice(safe.movie);
 
-      if(frenchCandidate)addChoice(frenchCandidate.movie);
-    }
+  // 2. Pépite : très bien notée, moins exposée et toujours très compatible.
+  const gem=eligible
+    .filter(item=>!choices.some(c=>String(c.id)===String(item.movie.id)))
+    .filter(item=>Number(item.movie.vote_average||0)>=6.9)
+    .filter(item=>Number(item.movie.vote_count||0)>=100)
+    .filter(item=>Number(item.movie.popularity||0)<45)
+    .filter(item=>recommendationConfidence(item.movie)>=67)
+    .sort((a,b)=>{
+      const gemA=Number(a.movie.vote_average||0)*9-Math.log10(Number(a.movie.popularity||0)+1)*8+a.score;
+      const gemB=Number(b.movie.vote_average||0)*9-Math.log10(Number(b.movie.popularity||0)+1)*8+b.score;
+      return gemB-gemA;
+    })[0];
+  if(gem)addChoice(gem.movie);
 
-    // Compléter sans imposer artificiellement une nationalité.
-    for(const item of scoredMovies){
-      addChoice(item.movie);
-      if(choices.length===3)break;
-    }
+  // 3. Découverte : autre genre principal, autre époque ou autre langue,
+  // sans sacrifier la qualité.
+  const first=choices[0];
+  const discovery=eligible
+    .filter(item=>!choices.some(c=>String(c.id)===String(item.movie.id)))
+    .filter(item=>recommendationConfidence(item.movie)>=64)
+    .sort((a,b)=>{
+      const diversity=movie=>{
+        if(!first)return 0;
+        let value=0;
+        if((movie.genre_ids||[])[0]!==((first.genre_ids||[])[0]))value+=10;
+        if(movie.original_language!==first.original_language)value+=5;
+        const yearGap=Math.abs(Number(yearOf(movie)||0)-Number(yearOf(first)||0));
+        if(yearGap>=12)value+=5;
+        return value;
+      };
+      return (b.score+diversity(b.movie))-(a.score+diversity(a.movie));
+    })[0];
+  if(discovery)addChoice(discovery.movie);
+
+  // Complément uniquement avec des films passant encore le seuil fort.
+  for(const item of eligible){
+    if(recommendationConfidence(item.movie)>=64)addChoice(item.movie);
+    if(choices.length===3)break;
   }
+
   state.recent=[...state.recent,...choices.map(m=>String(m.id))].slice(-30);
   save();
   const intentionNotice=choices.length<3&&state.mood
     ?" · Je préfère afficher moins de films plutôt que des propositions faibles ou hors sujet."
     :"";
   $("#recommendGrid").innerHTML=choices.map((m,index)=>{
-    const rawScore=candidateScore(m,state.mode);
-    const topScore=choices.length?candidateScore(choices[0],state.mode):rawScore;
-    const relative=topScore>0?rawScore/topScore:0;
-    const compat=Math.max(68,Math.min(96,Math.round(72+relative*22-index*2)));
+    const confidence=recommendationConfidence(m);
+    const compat=Math.max(64,Math.min(96,confidence));
     return `<article class="rec-card">
       <div class="poster">
         ${posterUrl(m)?`<img src="${posterUrl(m)}" alt="Affiche de ${escapeHtml(m.title)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">`:""}
