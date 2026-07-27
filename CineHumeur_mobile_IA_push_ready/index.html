@@ -642,31 +642,8 @@
           <div class="stat"><strong id="sourceStat">Local</strong><span class="muted">source active</span></div>
         </div>
 
-
-        <section class="ai-studio">
-          <div class="ai-head">
-            <div>
-              <span class="ai-badge">✦ CinéHumeur AI</span>
-              <h3 style="margin:12px 0 5px">Raconte-moi ton envie</h3>
-              <p class="muted" style="margin:0">Écris naturellement : ton état d’esprit, ce que tu veux éviter, le temps disponible ou le type de soirée.</p>
-            </div>
-          </div>
-          <div class="ai-input-wrap">
-            <textarea class="ai-input" id="aiPrompt" maxlength="600" placeholder="Ex. J’ai eu une journée difficile. Je veux quelque chose de positif, pas trop long, sans histoire triste."></textarea>
-            <button class="primary" id="aiRecommendBtn">Trouver mon film</button>
-          </div>
-          <div class="quick-prompts">
-            <button class="quick-prompt">Je veux rire sans réfléchir</button>
-            <button class="quick-prompt">Un film intense mais pas gore</button>
-            <button class="quick-prompt">Quelque chose de beau et réconfortant</button>
-            <button class="quick-prompt">Surprends-moi avec une pépite</button>
-          </div>
-          <div class="ai-status" id="aiStatus"></div>
-          <div class="insight-card hidden" id="aiInsight"></div>
-        </section>
-
         <section class="preference-shell">
-          <div class="preference-title"><div><div class="step">Ce soir</div><h3 style="margin-bottom:5px">De quoi as-tu envie ?</h3><p class="muted" style="margin:0">Choisis une humeur puis, si tu veux, précise un ou plusieurs genres.</p></div><button class="ghost" id="clearPrefsBtn">Effacer</button></div>
+          <div class="preference-title"><div><div class="step">Ce soir</div><h3 style="margin-bottom:5px">De quoi as-tu envie ?</h3><p class="muted" style="margin:0">Choisis une envie. Les précisions adaptées apparaîtront ensuite.</p></div><button class="ghost" id="clearPrefsBtn">Effacer</button></div>
           <div class="choice-grid" id="moodChoices">
             <button class="choice-btn" data-mood="fun">😂 Je veux rire<small>Comédie réellement légère</small></button>
             <button class="choice-btn" data-mood="relax">😌 Me détendre<small>Doux, agréable, sans lourdeur</small></button>
@@ -2286,71 +2263,54 @@ function updateStats(){
 }
 function renderPreferences(){
   document.querySelectorAll("[data-mood]").forEach(b=>b.classList.toggle("active",b.dataset.mood===state.mood));
-  const popular=[35,53,18,28,878,10749,12,16,9648,80,14,27];
-  $("#genreChoices").innerHTML=popular.map(id=>`<button class="genre-chip ${(state.selectedGenres||[]).includes(id)?"active":""}" data-genre="${id}">${GENRES[id]}</button>`).join("");
+
+  const contextualGenres={
+    fun:[35,16,10751,10749,10402],
+    relax:[35,16,10751,10749,10402,12],
+    emotion:[18,10749,10402,16],
+    smart:[9648,878,53,99,36,18],
+    action:[28,12,53,878,80],
+    family:[10751,16,35,12,14],
+    friends:[35,28,27,53,12],
+    couple:[10749,35,18,10402],
+    masterpiece:[18,36,99,80,10752],
+    dark:[53,80,27,9648,18],
+    escape:[12,14,878,16,10751],
+    surprise:[35,53,18,28,878,10749,12,16,9648,80,14,27]
+  };
+
+  const choices=contextualGenres[state.mood]||[];
+  const container=$("#genreChoices");
+
+  if(!state.mood){
+    container.innerHTML='<span class="muted" style="padding:6px 2px">Choisis d’abord une envie pour afficher les précisions utiles.</span>';
+    return;
+  }
+
+  container.innerHTML=choices.map(id=>`<button class="genre-chip ${(state.selectedGenres||[]).includes(id)?"active":""}" data-genre="${id}">${GENRES[id]}</button>`).join("");
+
   document.querySelectorAll("[data-genre]").forEach(btn=>btn.onclick=()=>{
     const id=Number(btn.dataset.genre),set=new Set(state.selectedGenres||[]);
-    set.has(id)?set.delete(id):set.add(id);state.selectedGenres=[...set].slice(0,4);save();renderPreferences();recommend();
+    set.has(id)?set.delete(id):set.add(id);
+    state.selectedGenres=[...set].slice(0,4);
+    save();
+    renderPreferences();
+    recommend();
   });
 }
 function bindPreferences(){
-  document.querySelectorAll("[data-mood]").forEach(btn=>btn.onclick=()=>{state.mood=state.mood===btn.dataset.mood?"":btn.dataset.mood;save();renderPreferences();recommend();});
+  document.querySelectorAll("[data-mood]").forEach(btn=>btn.onclick=()=>{
+    const nextMood=state.mood===btn.dataset.mood?"":btn.dataset.mood;
+    if(nextMood!==state.mood)state.selectedGenres=[];
+    state.mood=nextMood;
+    save();
+    renderPreferences();
+    recommend();
+  });
   $("#clearPrefsBtn").onclick=()=>{state.mood="";state.selectedGenres=[];save();renderPreferences();recommend();};
   renderPreferences();
 }
 
-
-async function askAI(){
-  const prompt=$("#aiPrompt").value.trim();
-  if(!prompt){$("#aiStatus").textContent="Décris ton envie en une phrase.";return;}
-  $("#aiRecommendBtn").disabled=true;
-  $("#aiStatus").className="ai-status thinking";
-  $("#aiStatus").textContent="CinéHumeur analyse ton humeur et ton profil…";
-  $("#aiInsight").classList.add("hidden");
-  try{
-    const p=profile();
-    const topGenres=Object.entries(p.genres).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([id,score])=>({id:Number(id),name:GENRES[id],score}));
-    const rated=Object.entries(state.ratings).slice(-60).map(([id,rating])=>{
-      const m=state.catalog.find(x=>String(x.id)===String(id))||fallbackMovies.find(x=>String(x.id)===String(id));
-      return m?{title:m.title,rating,genres:genreNames(m)}:null;
-    }).filter(Boolean);
-    const res=await fetch("/api/ai-recommend",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({prompt,topGenres,rated})
-    });
-    const data=await res.json();
-    if(!res.ok)throw new Error(data.error||"IA indisponible");
-    state.aiPrompt=prompt;
-    state.aiBrief=data;
-    if(data.mood)state.mood=data.mood;
-    if(Array.isArray(data.preferred_genres))state.selectedGenres=[...new Set(data.preferred_genres)].slice(0,4);
-    save();renderPreferences();
-    $("#aiInsight").innerHTML=`<strong>Ce que j’ai compris</strong><br>${escapeHtml(data.summary||prompt)}${data.constraints?.length?`<div class="muted" style="margin-top:7px">${data.constraints.map(escapeHtml).join(" · ")}</div>`:""}`;
-    $("#aiInsight").classList.remove("hidden");
-    $("#aiStatus").textContent="Sélection prête.";
-    await recommend();
-  }catch(err){
-    state.aiPrompt=prompt;
-    const lower=prompt.toLowerCase();
-    if(/rire|drôle|comédie|marrant/.test(lower))state.mood="fun";
-    else if(/détendre|calme|doux|léger|vider la tête/.test(lower))state.mood="relax";
-    else if(/émouvant|pleurer|émotion|touchant/.test(lower))state.mood="emotion";
-    else if(/réfléchir|complexe|mystère|cérébral/.test(lower))state.mood="smart";
-    else if(/action|adrénaline|explosion|rythme/.test(lower))state.mood="action";
-    else if(/famille|enfant/.test(lower))state.mood="family";
-    else if(/amis|potes|soirée/.test(lower))state.mood="friends";
-    else if(/couple|romantique|romance/.test(lower))state.mood="couple";
-    else if(/chef.?d.?œuvre|grand film|incontournable/.test(lower))state.mood="masterpiece";
-    else if(/sombre|horreur|thriller|angoisse/.test(lower))state.mood="dark";
-    else if(/aventure|ailleurs|évasion|imaginaire/.test(lower))state.mood="escape";
-    else state.mood="surprise";
-    state.aiBrief={summary:"Interprétation locale de ton envie",constraints:[],preferred_genres:[],avoid_genres:[]};
-    save();renderPreferences();
-    $("#aiStatus").textContent="Mode intelligent local utilisé. Ajoute OPENAI_API_KEY dans Vercel pour l’analyse conversationnelle complète.";
-    await recommend();
-  }finally{$("#aiRecommendBtn").disabled=false}
-}
 
 async function searchMovies(){
   const raw=$("#searchInput").value.trim();
@@ -2398,10 +2358,6 @@ $("#trainMoreBtn").onclick=async()=>{show("onboardingView");await loadBatch()};
 $("#searchToggleBtn").onclick=()=>$("#searchBox").classList.toggle("hidden");
 $("#searchBtn").onclick=searchMovies;
 $("#searchInput").addEventListener("keydown",e=>{if(e.key==="Enter")searchMovies()});
-$("#aiRecommendBtn").onclick=askAI;
-$("#aiPrompt").value=state.aiPrompt||"";
-$("#aiPrompt").addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")askAI()});
-document.querySelectorAll(".quick-prompt").forEach(btn=>btn.onclick=()=>{$("#aiPrompt").value=btn.textContent;askAI();});
 $("#modeButtons").onclick=e=>{
   const btn=e.target.closest(".mode-btn");if(!btn)return;
   document.querySelectorAll(".mode-btn").forEach(b=>b.classList.remove("active"));
