@@ -545,27 +545,85 @@
 @media(max-width:720px){.mobile-swipe-hint{display:block}}
 
 
-/* Carrousel clairement défilable */
-.carousel-shell{position:relative}
-.carousel-hint{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;color:var(--muted);font-size:.88rem}
-.carousel-hint strong{color:var(--text)}
-.carousel-controls{display:flex;gap:8px}
-.carousel-arrow{width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.07);color:var(--text);font-size:1.15rem;cursor:pointer;display:grid;place-items:center}
-.carousel-arrow:disabled{opacity:.32;cursor:default}
-.carousel-dots{display:flex;justify-content:center;gap:7px;margin-top:12px}
-.carousel-dot{width:7px;height:7px;border-radius:999px;border:0;padding:0;background:rgba(255,255,255,.25);transition:.2s ease}
-.carousel-dot.active{width:22px;background:rgba(255,255,255,.9)}
-.movie-synopsis-preview{color:var(--muted);line-height:1.5;font-size:.92rem;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:5.5em}
+/* Carrousel mobile clairement identifiable */
+.carousel-mobile-head{
+  display:none;
+}
+.carousel-nav{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.carousel-arrow{
+  width:44px;
+  height:44px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:999px;
+  background:rgba(132,104,255,.2);
+  color:var(--text);
+  font-size:1.5rem;
+  font-weight:900;
+  cursor:pointer;
+}
+.carousel-arrow:disabled{
+  opacity:.35;
+}
+.carousel-dots{
+  display:none;
+  justify-content:center;
+  align-items:center;
+  gap:8px;
+  margin:12px 0 4px;
+}
+.carousel-dot{
+  width:9px;
+  height:9px;
+  border:0;
+  padding:0;
+  border-radius:99px;
+  background:rgba(255,255,255,.3);
+  transition:.2s ease;
+}
+.carousel-dot.active{
+  width:28px;
+  background:var(--accent);
+}
 @media(max-width:700px){
-  .movie-grid,.recommendation-grid,.carousel-track{display:flex!important;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-left:16px;padding:4px 18vw 12px 2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .movie-grid::-webkit-scrollbar,.recommendation-grid::-webkit-scrollbar,.carousel-track::-webkit-scrollbar{display:none}
-  .movie-grid>*,.recommendation-grid>*,.carousel-track>*{flex:0 0 82%;scroll-snap-align:start}
+  .mobile-swipe-hint{display:none!important}
+  .carousel-mobile-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    margin:12px 0 8px;
+  }
+  .carousel-mobile-head span{
+    color:var(--muted);
+    font-weight:800;
+    font-size:.92rem;
+  }
+  .recommend-grid{
+    display:flex!important;
+    grid-template-columns:none!important;
+    gap:14px;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    scroll-padding-left:0;
+    padding:4px 18% 12px 0;
+    margin-top:8px;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .recommend-grid::-webkit-scrollbar{display:none}
+  .recommend-grid .rec-card{
+    flex:0 0 88%;
+    scroll-snap-align:start;
+  }
+  .carousel-dots{display:flex}
 }
 
 </style>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-document.addEventListener('DOMContentLoaded',()=>setTimeout(enhanceCarousels,100));
-</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div class="app">
@@ -690,7 +748,15 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(enhanceCarousels,100
           <button class="mode-btn" data-mode="surprise">🎲 Surprise</button>
         </div>
 
-        <div class="mood-summary" id="moodSummary">Sélection calculée selon ton profil.</div><div class="mobile-swipe-hint">← Fais glisser pour voir les 3 propositions →</div><div class="recommend-grid" id="recommendGrid"></div>
+        <div class="carousel-mobile-head">
+          <span>Glisse pour découvrir les autres films</span>
+          <div class="carousel-nav">
+            <button class="carousel-arrow" id="carouselPrev" type="button" aria-label="Film précédent">‹</button>
+            <button class="carousel-arrow" id="carouselNext" type="button" aria-label="Film suivant">›</button>
+          </div>
+        </div>
+        <div class="recommend-grid" id="recommendGrid"></div>
+        <div class="carousel-dots" id="carouselDots" aria-label="Navigation du carrousel"></div>
         <div class="row" style="margin-top:18px">
           <button class="primary" id="refreshBtn">Proposer 3 autres films</button>
         </div>
@@ -1946,6 +2012,76 @@ async function ensureRecommendationPool(){
 
   await ensureFrenchPool();
 }
+
+function setupRecommendationCarousel(){
+  const track=$("#recommendGrid");
+  const dots=$("#carouselDots");
+  const prev=$("#carouselPrev");
+  const next=$("#carouselNext");
+  if(!track||!dots||!prev||!next)return;
+
+  const cards=[...track.querySelectorAll(".rec-card")];
+  dots.innerHTML="";
+
+  if(cards.length<2){
+    prev.disabled=true;
+    next.disabled=true;
+    return;
+  }
+
+  cards.forEach((card,index)=>{
+    const dot=document.createElement("button");
+    dot.type="button";
+    dot.className=`carousel-dot ${index===0?"active":""}`;
+    dot.setAttribute("aria-label",`Voir le film ${index+1}`);
+    dot.onclick=()=>track.scrollTo({left:card.offsetLeft,behavior:"smooth"});
+    dots.appendChild(dot);
+  });
+
+  const getIndex=()=>{
+    let best=0;
+    let min=Infinity;
+    cards.forEach((card,index)=>{
+      const d=Math.abs(card.offsetLeft-track.scrollLeft);
+      if(d<min){min=d;best=index}
+    });
+    return best;
+  };
+
+  const update=()=>{
+    const index=getIndex();
+    [...dots.children].forEach((dot,i)=>dot.classList.toggle("active",i===index));
+    prev.disabled=index===0;
+    next.disabled=index===cards.length-1;
+  };
+
+  prev.onclick=()=>{
+    const index=Math.max(0,getIndex()-1);
+    track.scrollTo({left:cards[index].offsetLeft,behavior:"smooth"});
+  };
+  next.onclick=()=>{
+    const index=Math.min(cards.length-1,getIndex()+1);
+    track.scrollTo({left:cards[index].offsetLeft,behavior:"smooth"});
+  };
+
+  let raf=0;
+  track.onscroll=()=>{
+    cancelAnimationFrame(raf);
+    raf=requestAnimationFrame(update);
+  };
+
+  update();
+
+  // Démonstration légère une seule fois sur mobile.
+  if(window.innerWidth<=700&&!sessionStorage.getItem("cinehumeurSwipeShown")){
+    sessionStorage.setItem("cinehumeurSwipeShown","1");
+    setTimeout(()=>{
+      track.scrollTo({left:45,behavior:"smooth"});
+      setTimeout(()=>track.scrollTo({left:0,behavior:"smooth"}),650);
+    },450);
+  }
+}
+
 async function recommend(){
   $("#recommendGrid").innerHTML=`<div class="notice">Calcul des recommandations…</div>`;
   await ensureRecommendationPool();
@@ -2044,7 +2180,6 @@ async function recommend(){
   const intentionNotice=choices.length<3&&state.mood
     ?" · Je préfère afficher moins de films plutôt que des propositions faibles ou hors sujet."
     :"";
-  $("#moodSummary").textContent=`Objectif : ${moodLabel()}${state.aiBrief?.summary ? " · "+state.aiBrief.summary : ""}${intentionNotice}`;
   $("#recommendGrid").innerHTML=choices.map((m,index)=>{
     const rawScore=candidateScore(m,state.mode);
     const topScore=choices.length?candidateScore(choices[0],state.mode):rawScore;
@@ -2059,7 +2194,7 @@ async function recommend(){
         <span class="rec-label">${recRole(index)}</span><span class="score">${compat}% compatible</span>
         <h3 style="margin:12px 0 6px">${escapeHtml(m.title)}</h3>
         <div class="movie-meta">${yearOf(m)} · ${genreNames(m).slice(0,3).join(" / ")}${isFrenchMovie(m)?" · 🇫🇷 Film français":""}</div>
-        <p class="reason movie-synopsis-preview">${escapeHtml((m.overview||"Synopsis indisponible.").trim())}</p>
+        <p class="reason">${escapeHtml((m.overview||"Synopsis indisponible.").trim())}</p>
         <div class="rec-actions" style="grid-template-columns:repeat(2,1fr)">
           <button class="secondary recRate" data-id="${m.id}" data-rate="love">❤️ J’ai adoré</button>
           <button class="secondary recRate" data-id="${m.id}" data-rate="like">👍 J’ai aimé</button>
@@ -2070,6 +2205,7 @@ async function recommend(){
       </div>
     </article>`;
   }).join("");
+  setupRecommendationCarousel();
   document.querySelectorAll(".recRate").forEach(btn=>btn.onclick=()=>{
     state.ratings[btn.dataset.id]=btn.dataset.rate;
     const card=btn.closest(".rec-card");
@@ -2414,96 +2550,6 @@ function renderPreferences(){
     recommend();
   });
 }
-
-function enhanceCarousels(){
-  const selectors=["#recommendations",".recommendation-grid",".movie-grid",".carousel-track"];
-  const seen=new Set();
-
-  selectors.forEach(selector=>{
-    document.querySelectorAll(selector).forEach(track=>{
-      if(seen.has(track)||track.dataset.carouselEnhanced==="true")return;
-      seen.add(track);
-
-      const cards=[...track.children].filter(el=>el.nodeType===1);
-      if(cards.length<2)return;
-
-      track.dataset.carouselEnhanced="true";
-      track.classList.add("carousel-track");
-
-      const shell=document.createElement("div");
-      shell.className="carousel-shell";
-      track.parentNode.insertBefore(shell,track);
-      shell.appendChild(track);
-
-      const hint=document.createElement("div");
-      hint.className="carousel-hint";
-      hint.innerHTML=`
-        <span><strong>Fais défiler</strong> pour voir les autres films →</span>
-        <span class="carousel-controls">
-          <button class="carousel-arrow carousel-prev" type="button" aria-label="Film précédent">‹</button>
-          <button class="carousel-arrow carousel-next" type="button" aria-label="Film suivant">›</button>
-        </span>`;
-      shell.insertBefore(hint,track);
-
-      const dots=document.createElement("div");
-      dots.className="carousel-dots";
-      cards.forEach((_,index)=>{
-        const dot=document.createElement("button");
-        dot.type="button";
-        dot.className=`carousel-dot ${index===0?"active":""}`;
-        dot.setAttribute("aria-label",`Aller au film ${index+1}`);
-        dot.onclick=()=>cards[index].scrollIntoView({behavior:"smooth",block:"nearest",inline:"start"});
-        dots.appendChild(dot);
-      });
-      shell.appendChild(dots);
-
-      const prev=hint.querySelector(".carousel-prev");
-      const next=hint.querySelector(".carousel-next");
-
-      const currentIndex=()=>{
-        const left=track.scrollLeft;
-        let best=0;
-        let distance=Infinity;
-        cards.forEach((card,index)=>{
-          const value=Math.abs(card.offsetLeft-track.offsetLeft-left);
-          if(value<distance){distance=value;best=index}
-        });
-        return best;
-      };
-
-      const update=()=>{
-        const index=currentIndex();
-        dots.querySelectorAll(".carousel-dot").forEach((dot,i)=>dot.classList.toggle("active",i===index));
-        prev.disabled=index===0;
-        next.disabled=index===cards.length-1;
-      };
-
-      prev.onclick=()=>cards[Math.max(0,currentIndex()-1)].scrollIntoView({behavior:"smooth",block:"nearest",inline:"start"});
-      next.onclick=()=>cards[Math.min(cards.length-1,currentIndex()+1)].scrollIntoView({behavior:"smooth",block:"nearest",inline:"start"});
-
-      let ticking=false;
-      track.addEventListener("scroll",()=>{
-        if(ticking)return;
-        ticking=true;
-        requestAnimationFrame(()=>{update();ticking=false});
-      },{passive:true});
-
-      update();
-
-      if(window.innerWidth<=700&&!sessionStorage.getItem("cinehumeur-carousel-hint")){
-        sessionStorage.setItem("cinehumeur-carousel-hint","1");
-        setTimeout(()=>{
-          track.scrollTo({left:34,behavior:"smooth"});
-          setTimeout(()=>track.scrollTo({left:0,behavior:"smooth"}),650);
-        },500);
-      }
-    });
-  });
-}
-
-const carouselObserver=new MutationObserver(()=>enhanceCarousels());
-carouselObserver.observe(document.body,{childList:true,subtree:true});
-
 function bindPreferences(){
   document.querySelectorAll("[data-mood]").forEach(btn=>btn.onclick=()=>{
     const nextMood=state.mood===btn.dataset.mood?"":btn.dataset.mood;
